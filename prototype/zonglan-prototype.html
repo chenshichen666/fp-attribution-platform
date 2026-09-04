@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>总览（误杀样本分析）· v9 改造布局原型</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: {
+        colors: { brand: '#4f7cff', 'brand-strong': '#4569f5', 'brand-soft': '#eef2ff',
+          ink: { 1:'#1a2233', 2:'#2d3650', 3:'#5a6478', 4:'#8b94a8' }, line:'#eef1f6' },
+        fontFamily: { sans: ['Inter','system-ui','PingFang SC','Microsoft YaHei','sans-serif'] },
+      } }
+    }
+  </script>
+  <style>
+    body { background:#f5f7fb; }
+    .card { background:#fff; border:1px solid #eef1f6; border-radius:16px; box-shadow:0 2px 8px rgba(20,30,60,.04); }
+    .pin { width:7px; height:7px; border-radius:50%; display:inline-block; }
+    .badge { padding:3px 10px; border-radius:8px; font-size:12px; font-weight:600; }
+    .seg button { padding:7px 16px; border-radius:9px; font-size:13.5px; font-weight:500; color:#5a6478; transition:all .18s; display:inline-flex; align-items:center; gap:6px; }
+    .seg button.on { background:#fff; color:#1a2233; box-shadow:0 1px 4px rgba(20,30,60,.08); }
+    .chip { padding:8px 14px; border-radius:10px; font-size:13px; font-weight:500; color:#5a6478; background:#f0f2f6; transition:all .18s; display:inline-flex; align-items:center; gap:6px; }
+    .chip:hover { border-color:#4f7cff; color:#4f7cff; }
+    .topbar { position:sticky; top:0; z-index:30; background:rgba(245,247,251,.85); backdrop-filter:blur(8px); }
+    .bar { height:8px; background:#eef1f6; border-radius:6px; overflow:hidden; }
+    .bar > i { display:block; height:100%; border-radius:6px; transition:width .6s cubic-bezier(.16,1,.3,1); }
+    .row { transition:background .15s; } .row:hover { background:#f7f9fc; }
+    .row.hl { background:#eef2ff; box-shadow:inset 3px 0 0 #4f7cff; }
+    .star { cursor:pointer; color:#cbd2e0; transition:all .15s; } .star.on { color:#f5b301; }
+    .drawer { transition:transform .28s cubic-bezier(.16,1,.3,1); }
+    .spin { width:18px; height:18px; border:2px solid #e3e8f2; border-top-color:#4f7cff; border-radius:50%; animation:sp .7s linear infinite; }
+    @keyframes sp { to { transform:rotate(360deg); } }
+    ::-webkit-scrollbar { width:8px; height:8px; } ::-webkit-scrollbar-thumb { background:#d4dae6; border-radius:8px; }
+  </style>
+</head>
+<body class="font-sans text-ink-1">
+  <!-- 顶部栏 -->
+  <div class="topbar border-b border-line">
+    <div class="max-w-[1440px] mx-auto px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
+      <div class="flex items-center gap-4 flex-wrap">
+        <h1 class="text-[24px] font-bold flex items-center gap-2"><i data-lucide="layout-dashboard" class="text-brand"></i>总览</h1>
+        <span class="text-[12px] text-ink-4">（原「误杀样本分析」· v9 改造）</span>
+        <!-- 双 Tab -->
+        <div class="seg flex bg-[#f0f2f6] rounded-xl p-1 ml-2" id="mainTabs">
+          <button data-v="tag" class="on"><i data-lucide="tags" class="w-4 h-4"></i>标签</button>
+          <button data-v="cluster"><i data-lucide="box" class="w-4 h-4"></i>聚类簇</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center gap-2 card px-3 py-2">
+          <i data-lucide="clock" class="w-[15px] h-[15px] text-brand"></i>
+          <select id="presets" class="text-[13px] border border-line rounded-md px-2 py-1 bg-white"><option value="7">近7天</option><option value="14" selected>近14天</option><option value="30">近30天</option></select>
+        </div>
+        <span id="srcBadge" class="badge flex items-center gap-1.5" style="background:#e9f8ef;color:#19a558"><i data-lucide="zap" class="w-3.5 h-3.5"></i><span>实时聚合 · 时间子集</span></span>
+        <button class="chip"><i data-lucide="link" class="w-4 h-4"></i>分享</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-[1440px] mx-auto px-6 py-6 space-y-5">
+
+    <!-- ============ 标签 Tab ============ -->
+    <section id="tab-tag" class="space-y-5">
+      <!-- KPI 6 卡 -->
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4" id="kpiRow"></div>
+
+      <!-- 双趋势图 -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div class="card p-5">
+          <div class="flex items-start justify-between mb-1">
+            <h3 class="text-[15px] font-bold">周维度精度趋势</h3>
+            <div class="text-right text-[12px]">
+              <div class="text-ink-3">大盘精度 <b class="text-[#f97316]" id="wkDashP">88.8%</b> <span class="text-green-500">+0.20p</span></div>
+              <div class="text-ink-3">绝对精度 <b class="text-[#22c55e]" id="wkDashA">83.2%</b> <span class="text-green-500">+0.77p</span></div>
+            </div>
+          </div>
+          <div id="weekChart" style="height:300px"></div>
+        </div>
+        <div class="card p-5">
+          <div class="flex items-start justify-between mb-1">
+            <h3 class="text-[15px] font-bold">日维度精度趋势</h3>
+            <div class="text-right text-[12px] text-ink-3">近14天 · 精度 + 样本量</div>
+          </div>
+          <div id="dayChart" style="height:300px"></div>
+        </div>
+      </div>
+
+      <!-- 标签跟踪三段式 -->
+      <div class="card p-5">
+        <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <h3 class="text-[15px] font-bold">标签跟踪</h3>
+          <div class="seg flex bg-[#f0f2f6] rounded-lg p-1" id="trackTabs">
+            <button data-v="all" class="on">全部 <b class="text-ink-4 ml-1" id="cAll"></b></button>
+            <button data-v="abn"><i class="pin" style="background:#ef4444"></i>异常 <b class="text-ink-4 ml-1" id="cAbn"></b></button>
+            <button data-v="watch"><i data-lucide="star" class="w-3.5 h-3.5"></i>我的关注 <b class="text-ink-4 ml-1" id="cWatch"></b></button>
+          </div>
+        </div>
+        <!-- 表头 -->
+        <div class="grid grid-cols-12 gap-3 px-3 py-2.5 text-[12px] font-semibold text-ink-3 bg-[#f7f9fc] rounded-lg mb-1">
+          <div class="col-span-4">标签</div>
+          <div class="col-span-3 text-center">当周精度</div>
+          <div class="col-span-2 text-center">FP 数</div>
+          <div class="col-span-2 text-center">状态</div>
+          <div class="col-span-1 text-right">关注</div>
+        </div>
+        <div id="tagList" class="divide-y divide-line"></div>
+      </div>
+    </section>
+
+    <!-- ============ 聚类簇 Tab ============ -->
+    <section id="tab-cluster" class="space-y-5 hidden">
+      <div class="seg flex bg-[#f0f2f6] rounded-xl p-1 w-fit" id="clusterTabs">
+        <button data-v="quad" class="on"><i data-lucide="scatter-chart" class="w-4 h-4"></i>象限分析</button>
+        <button data-v="fine"><i data-lucide="bar-chart-3" class="w-4 h-4"></i>精标数据</button>
+      </div>
+
+      <!-- 子 Tab 1 象限分析 -->
+      <div id="sub-quad" class="space-y-4">
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3" id="catStats"></div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="card p-5 lg:col-span-2">
+            <div class="flex items-center justify-between mb-2 flex-wrap gap-2">
+              <h3 class="text-[15px] font-bold">象限分析 · 机审% × 人审%</h3>
+              <div id="legend" class="flex flex-wrap gap-2 text-[11px]"></div>
+            </div>
+            <div id="quadChart" style="height:420px"></div>
+          </div>
+          <div class="card p-5">
+            <h3 class="text-[14px] font-bold mb-3">聚类簇列表</h3>
+            <div id="clusterList" class="space-y-1.5 max-h-[420px] overflow-y-auto pr-1"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 子 Tab 2 精标数据 -->
+      <div id="sub-fine" class="space-y-4 hidden">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="fineStats"></div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="card p-5 lg:col-span-2">
+            <h3 class="text-[15px] font-bold mb-2">擦边标签占比分布（10 区间）</h3>
+            <div id="fineChart" style="height:320px"></div>
+          </div>
+          <div class="card p-5">
+            <h3 class="text-[14px] font-bold mb-3">含该标签的簇列表</h3>
+            <div id="fineList" class="space-y-1.5 max-h-[320px] overflow-y-auto pr-1"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 簇明细弹窗（象限分析） -->
+  <div id="mask" class="fixed inset-0 bg-black/30 hidden z-40"></div>
+  <aside id="drawer" class="drawer fixed top-0 right-0 h-full w-full max-w-[560px] bg-white shadow-2xl z-50 translate-x-full flex flex-col">
+    <div class="px-6 py-4 border-b flex items-center justify-between">
+      <div><h2 class="text-[17px] font-bold" id="dTitle">簇明细</h2><span id="dSub" class="text-[12px] text-ink-3"></span></div>
+      <button id="drawerClose" class="text-ink-4 hover:text-ink-1"><i data-lucide="x"></i></button>
+    </div>
+    <div class="flex-1 overflow-y-auto px-6 py-5 space-y-2 text-[13px]" id="dBody"></div>
+  </aside>
+
+  <p class="text-center text-[12px] text-ink-4 mt-8 mb-4">由 <a href="https://platform.example.com/" style="color: #8A2BE2;" target="_blank">With</a> 通过自然语言生成</p>
+
+  <script>
+  /* ========== 配色规范（v9 §0） ========== */
+  // 七类人机分歧
+  const CAT = {
+    'left-up':   { c:'#ef4444', n:'人机不一致·左上' },
+    'right-down':{ c:'#f97316', n:'人机不一致·右下' },
+    'h-human':   { c:'#a855f7', n:'横条·人审分歧' },
+    'h-machine': { c:'#0ea5e9', n:'横条·机审分歧' },
+    'center':    { c:'#3b82f6', n:'中心·双分歧' },
+    'dual-high': { c:'#22c55e', n:'双高·一致' },
+    'dual-low':  { c:'#94a3b8', n:'双低·弱' },
+  };
+  // 标签精度五档
+  function precColor(p){ if(p<50)return'#ef4444'; if(p<70)return'#f97316'; if(p<80)return'#eab308'; if(p<90)return'#86efac'; return'#22c55e'; }
+  function precLabel(p){ if(p<50)return'严重偏低'; if(p<70)return'偏低'; if(p<80)return'中等'; if(p<90)return'良好'; return'优秀'; }
+  function catOf(h,m){ if(h>60&&m<40)return'left-up'; if(m>60&&h<40)return'right-down'; if(h>=40&&h<=60&&(m>60||m<40))return'h-human'; if(m>=40&&m<=60&&(h>60||h<40))return'h-machine'; if(h>=40&&h<=60&&m>=40&&m<=60)return'center'; if(m>60&&h>60)return'dual-high'; return'dual-low'; }
+
+  /* ========== 标签 Tab 数据 ========== */
+  const TAGS = Array.from({length:24},(_,i)=>{
+    const p=[12,38,55,67,73,81,88,93,96,99,44,28][i%12]+(i%4);
+    const fp=Math.round((100-p)/100*(60+i*5));
+    return { id:14000+i*13, name:['内容低质','设计不适二级','误导性内容','虚假宣传','低俗暗示','夸大宣传','标题党','诱导点击','素材违规','版权风险','落地页异常','表单误导'][i%12],
+      precision:Math.min(p,99), fp, sample:60+i*5 };
+  });
+  // 我的关注（localStorage）
+  let watched = JSON.parse(localStorage.getItem('watchedTags')||'[]');
+  let trackTab='all';
+
+  function renderKpi(){
+    const tot=TAGS.reduce((s,t)=>s+t.sample,0), fp=TAGS.reduce((s,t)=>s+t.fp,0);
+    const cards=[
+      {n:'大盘精度',v:'88.8%',c:'#19a558',tag:'近7天',delta:'+2.3%',up:true},
+      {n:'绝对精度',v:'83.2%',c:'#19a558',tag:'近7天',delta:'+0.8%',up:true},
+      {n:'总样本',v:tot.toLocaleString(),c:'#4f7cff',tag:'近7天'},
+      {n:'FP 数',v:fp.toLocaleString(),c:'#e8851a',tag:'近7天',delta:'-12',up:false},
+      {n:'标签数',v:TAGS.length,c:'#8b5cf6'},
+      {n:'聚类簇数',v:318,c:'#0ea5e9'},
+    ];
+    document.getElementById('kpiRow').innerHTML=cards.map(k=>`
+      <div class="card p-4">
+        <div class="flex items-center justify-between">
+          <span class="text-[12px] text-ink-3">${k.n}</span>
+          ${k.tag?`<span class="text-[10px] text-ink-4 bg-[#f0f2f6] px-1.5 py-0.5 rounded">${k.tag}</span>`:''}
+        </div>
+        <b class="block text-[24px] leading-tight mt-1" style="color:${k.c}">${k.v}</b>
+        ${k.delta?`<span class="text-[11px] ${k.up?'text-green-500':'text-red-500'} flex items-center gap-0.5 mt-0.5">${k.up?'▲':'▼'} ${k.delta} <span class="text-ink-4">周环比</span></span>`:'<span class="block h-4"></span>'}
+      </div>`).join('');
+  }
+
+  function renderTagList(){
+    let arr=TAGS.filter(t=>{
+      if(trackTab==='abn') return t.fp>=100 && t.precision<=60;
+      if(trackTab==='watch') return watched.includes(t.id);
+      return true;
+    });
+    document.getElementById('cAll').textContent=TAGS.length;
+    document.getElementById('cAbn').textContent=TAGS.filter(t=>t.fp>=100&&t.precision<=60).length;
+    document.getElementById('cWatch').textContent=watched.length;
+    const box=document.getElementById('tagList');
+    if(!arr.length){ box.innerHTML=`<div class="text-center py-10 text-ink-3 text-[14px]"><i data-lucide="star" class="inline w-5 h-5"></i> ${trackTab==='watch'?'暂无关注的标签，点击右侧★添加':'无匹配标签'}</div>`; lucide.createIcons(); return; }
+    box.innerHTML=arr.map(t=>{
+      const col=precColor(t.precision);
+      const isW=watched.includes(t.id);
+      return `<div class="row grid grid-cols-12 gap-3 px-3 py-3 items-center cursor-pointer" data-id="${t.id}">
+        <div class="col-span-4 flex items-center gap-2"><span class="text-[13px] font-semibold text-ink-2">${t.id}</span><span class="text-[14px] font-semibold text-ink-1">${t.name}</span></div>
+        <div class="col-span-3 flex items-center justify-center gap-2">
+          <span class="bar w-24"><i style="width:${t.precision}%;background:${col}"></i></span>
+          <b class="text-[13px]" style="color:${col}">${t.precision}%</b>
+          <span class="badge" style="background:${col}1a;color:${col}">${precLabel(t.precision)}</span>
+        </div>
+        <div class="col-span-2 text-center text-[13px] font-semibold text-ink-2">${t.fp}</div>
+        <div class="col-span-2 text-center">${t.fp>=100&&t.precision<=60?'<span class="badge" style="background:#fdecec;color:#e23a3a">异常</span>':'<span class="text-ink-4 text-[12px]">正常</span>'}</div>
+        <div class="col-span-1 text-right"><i data-lucide="star" class="star w-4 h-4 inline ${isW?'on':''}" data-star="${t.id}"></i></div>
+      </div>`;
+    }).join('');
+    box.querySelectorAll('.row').forEach(r=>{
+      r.addEventListener('click',e=>{
+        if(e.target.closest('[data-star]')) return;
+        alert('跳转到 BadCase 分析：/classify?tagId='+r.dataset.id+' （原型演示）');
+      });
+    });
+    box.querySelectorAll('[data-star]').forEach(s=>{
+      s.addEventListener('click',e=>{
+        e.stopPropagation();
+        const id=+s.dataset.star;
+        if(watched.includes(id)) watched=watched.filter(x=>x!==id); else watched.push(id);
+        localStorage.setItem('watchedTags',JSON.stringify(watched));
+        renderTagList();
+      });
+    });
+    lucide.createIcons();
+  }
+
+  /* ========== 趋势图 ========== */
+  const weekChart=echarts.init(document.getElementById('weekChart'));
+  weekChart.setOption({
+    grid:{left:40,right:20,top:20,bottom:30,containLabel:true},
+    tooltip:{trigger:'axis'},
+    legend:{data:['大盘精度','绝对精度'],top:0,textStyle:{fontSize:11}},
+    xAxis:{type:'category',data:Array.from({length:12},(_,i)=>'W'+(i+1)),axisLabel:{fontSize:11}},
+    yAxis:{type:'value',max:100,axisLabel:{formatter:'{value}%'}},
+    series:[
+      {name:'大盘精度',type:'line',smooth:true,data:[85.1,85.6,86.2,86.8,87.0,87.4,87.9,88.1,88.3,88.5,88.6,88.8],lineStyle:{color:'#f97316'},itemStyle:{color:'#f97316'}},
+      {name:'绝对精度',type:'line',smooth:true,data:[80.2,80.8,81.3,81.9,82.2,82.6,82.9,83.0,83.0,83.1,83.1,83.2],lineStyle:{color:'#22c55e'},itemStyle:{color:'#22c55e'}},
+    ]
+  });
+  const dayChart=echarts.init(document.getElementById('dayChart'));
+  const days=Array.from({length:14},(_,i)=>{const d=new Date();d.setDate(d.getDate()-13+i);return (d.getMonth()+1)+'/'+d.getDate();});
+  dayChart.setOption({
+    grid:{left:45,right:45,top:24,bottom:30,containLabel:true},
+    tooltip:{trigger:'axis'},
+    legend:{data:['大盘精度','绝对精度','样本量'],top:0,textStyle:{fontSize:11}},
+    xAxis:{type:'category',data:days,axisLabel:{fontSize:11}},
+    yAxis:[
+      {type:'value',max:100,axisLabel:{formatter:'{value}%'},position:'left'},
+      {type:'value',position:'right',axisLabel:{formatter:v=>(v/1000)+'k'}},
+    ],
+    series:[
+      {name:'大盘精度',type:'line',smooth:true,yAxisIndex:0,data:days.map(()=>85+Math.random()*5),lineStyle:{color:'#f97316'},itemStyle:{color:'#f97316'}},
+      {name:'绝对精度',type:'line',smooth:true,yAxisIndex:0,data:days.map(()=>80+Math.random()*4),lineStyle:{color:'#22c55e'},itemStyle:{color:'#22c55e'}},
+      {name:'样本量',type:'bar',yAxisIndex:1,data:days.map(()=>6000+Math.round(Math.random()*1500)),itemStyle:{color:'#cfe0ff',borderRadius:[3,3,0,0]}},
+    ]
+  });
+
+  /* ========== 聚类簇 · 象限分析 ========== */
+  const clusters=Array.from({length:60},(_,i)=>{
+    const m=Math.round(Math.random()*100), h=Math.round(Math.random()*100);
+    const n=Math.round(20+Math.random()*400);
+    return {cid:'c'+(i+1),m,h,n,cat:catOf(h,m)};
+  });
+  let hideCat={};
+  function renderCatStats(){
+    const counts={}; clusters.forEach(c=>counts[c.cat]=(counts[c.cat]||0)+1);
+    document.getElementById('catStats').innerHTML=Object.entries(CAT).map(([k,v])=>`
+      <div class="card p-3 border-l-4" style="border-color:${v.c}">
+        <div class="text-[11px] text-ink-3 truncate">${v.n}</div>
+        <b class="text-[18px]" style="color:${v.c}">${counts[k]||0}</b>
+        <span class="text-[11px] text-ink-4">簇 · ${((counts[k]||0)/clusters.length*100).toFixed(0)}%</span>
+      </div>`).join('');
+  }
+  function renderLegend(){
+    document.getElementById('legend').innerHTML=Object.entries(CAT).map(([k,v])=>`
+      <span class="flex items-center gap-1 cursor-pointer ${hideCat[k]?'opacity-30':''}" data-cat="${k}"><i class="pin" style="background:${v.c}"></i>${v.n}</span>`).join('');
+    document.querySelectorAll('#legend [data-cat]').forEach(el=>el.onclick=()=>{const k=el.dataset.cat;hideCat[k]=!hideCat[k];renderLegend();renderQuad();});
+  }
+  const quadChart=echarts.init(document.getElementById('quadChart'));
+  function renderQuad(){
+    const data=clusters.filter(c=>!hideCat[c.cat]).map(c=>({
+      value:[c.m,c.h,c.n], cid:c.cid, cat:c.cat,
+      symbolSize:Math.max(6,Math.min(28,Math.log(c.n)*4)),
+      itemStyle:{color:CAT[c.cat].c,opacity:.8,borderColor:'#fff',borderWidth:1},
+    }));
+    quadChart.setOption({
+      grid:{left:50,right:30,top:20,bottom:50,containLabel:true},
+      tooltip:{formatter:p=>`<b>${p.data.cid}</b> · ${CAT[p.data.cat].n}<br>机审%：${p.data.value[0]}<br>人审%：${p.data.value[1]}<br>簇规模：${p.data.value[2]}`},
+      xAxis:{name:'机审%',min:0,max:100,nameLocation:'middle',nameGap:30,splitLine:{lineStyle:{color:'#f0f2f6'}},axisLabel:{formatter:'{value}%'}},
+      yAxis:{name:'人审%',min:0,max:100,nameLocation:'middle',nameGap:38,splitLine:{lineStyle:{color:'#f0f2f6'}},axisLabel:{formatter:'{value}%'}},
+      series:[{
+        type:'scatter',data,
+        markLine:{silent:true,symbol:'none',lineStyle:{type:'dashed',color:'#cbd2e0'},
+          data:[{xAxis:40},{xAxis:60},{yAxis:40},{yAxis:60}]},
+      }]
+    });
+  }
+  function renderClusterList(){
+    const box=document.getElementById('clusterList');
+    box.innerHTML=clusters.map(c=>`
+      <div class="row rounded-lg px-3 py-2 flex items-center gap-2 cursor-pointer" data-cid="${c.cid}">
+        <i class="pin" style="background:${CAT[c.cat].c}"></i>
+        <span class="text-[13px] font-semibold text-ink-1 w-10">${c.cid}</span>
+        <span class="text-[11px] text-ink-3 flex-1">机${c.m}% · 人${c.h}%</span>
+        <span class="text-[11px] text-ink-4">${c.n}</span>
+      </div>`).join('');
+    box.querySelectorAll('.row').forEach(r=>{
+      r.addEventListener('mouseenter',()=>highlight(r.dataset.cid,true));
+      r.addEventListener('mouseleave',()=>highlight(r.dataset.cid,false));
+      r.addEventListener('click',()=>openCluster(r.dataset.cid));
+    });
+    quadChart.off('mouseover').off('mouseout');
+    quadChart.on('mouseover',p=>{if(p.data&&p.data.cid)highlight(p.data.cid,true);});
+    quadChart.on('mouseout',p=>{if(p.data&&p.data.cid)highlight(p.data.cid,false);});
+  }
+  function highlight(cid,on){
+    document.querySelectorAll('#clusterList .row').forEach(r=>r.classList.toggle('hl',on&&r.dataset.cid===cid));
+  }
+  function openCluster(cid){
+    const c=clusters.find(x=>x.cid===cid);
+    document.getElementById('dTitle').textContent='簇 '+cid+' 明细';
+    document.getElementById('dSub').textContent=`${CAT[c.cat].n} · 机审${c.m}% / 人审${c.h}% · 规模${c.n}`;
+    document.getElementById('dBody').innerHTML=Array.from({length:Math.min(c.n,8)},(_,i)=>`<div class="flex items-center gap-2 py-2 border-b border-line"><i class="pin" style="background:${CAT[c.cat].c}"></i><span class="font-mono text-[12px] text-ink-2">el_${cid}_${i+1}</span><span class="text-ink-4 text-[11px]">指纹 md5…</span><span class="ml-auto badge" style="background:#eef2ff;color:#4f7cff">查看</span></div>`).join('');
+    document.getElementById('mask').classList.remove('hidden');
+    document.getElementById('drawer').classList.remove('translate-x-full');
+  }
+  document.getElementById('drawerClose').onclick=()=>{document.getElementById('mask').classList.add('hidden');document.getElementById('drawer').classList.add('translate-x-full');};
+  document.getElementById('mask').onclick=()=>{document.getElementById('mask').classList.add('hidden');document.getElementById('drawer').classList.add('translate-x-full');};
+
+  /* ========== 聚类簇 · 精标数据 ========== */
+  function renderFineStats(){
+    document.getElementById('fineStats').innerHTML=`
+      <div class="card p-5 border-l-4" style="border-color:#22c55e">
+        <div class="text-[13px] text-ink-3 mb-2">精标结果一致</div>
+        <div class="flex gap-6"><div><b class="text-[22px]" style="color:#22c55e">42</b><span class="text-[12px] text-ink-3 ml-1">簇</span></div><div><b class="text-[22px]" style="color:#22c55e">3,180</b><span class="text-[12px] text-ink-3 ml-1">元素</span></div></div>
+        <div class="text-[11px] text-ink-4 mt-2">擦边打标高 &gt;60% · 擦边打标低 &lt;40%</div>
+      </div>
+      <div class="card p-5 border-l-4" style="border-color:#f59e0b">
+        <div class="text-[13px] text-ink-3 mb-2">精标分歧</div>
+        <div class="flex gap-6"><div><b class="text-[22px]" style="color:#f59e0b">18</b><span class="text-[12px] text-ink-3 ml-1">簇</span></div><div><b class="text-[22px]" style="color:#f59e0b">1,240</b><span class="text-[12px] text-ink-3 ml-1">元素</span></div></div>
+        <div class="text-[11px] text-ink-4 mt-2">40% ≤ 擦边占比 ≤ 60%</div>
+      </div>`;
+  }
+  const fineChart=echarts.init(document.getElementById('fineChart'));
+  const bins=Array.from({length:10},(_,i)=>({x:`${i*10}-${i*10+10}`,v:Math.round(2+Math.random()*8),zone:i<4?'low':i<6?'mid':'high'}));
+  fineChart.setOption({
+    grid:{left:40,right:20,top:20,bottom:30,containLabel:true},
+    tooltip:{trigger:'axis'},
+    xAxis:{type:'category',data:bins.map(b=>b.x),axisLabel:{fontSize:10,rotate:30}},
+    yAxis:{type:'value',name:'簇数'},
+    series:[{type:'bar',data:bins.map(b=>({value:b.v,itemStyle:{color:b.zone==='mid'?'#f59e0b':b.zone==='low'?'#86efac':'#4ade80',borderRadius:[4,4,0,0]}})),
+      markLine:{silent:true,symbol:'none',lineStyle:{type:'dashed',color:'#cbd2e0'},data:[{xAxis:3},{xAxis:5}]}}]
+  });
+  const fineClusters=Array.from({length:12},(_,i)=>({cid:'c'+(i*3+1),ratio:Math.round(Math.random()*100),n:Math.round(30+Math.random()*200)}));
+  function renderFineList(){
+    document.getElementById('fineList').innerHTML=fineClusters.map(c=>`
+      <div class="row rounded-lg px-3 py-2 flex items-center gap-2 cursor-pointer" data-cid="${c.cid}">
+        <span class="text-[13px] font-semibold text-ink-1 w-10">${c.cid}</span>
+        <span class="bar flex-1"><i style="width:${c.ratio}%;background:${c.ratio<40||c.ratio>60?'#22c55e':'#f59e0b'}"></i></span>
+        <b class="text-[12px]" style="color:${c.ratio<40||c.ratio>60?'#22c55e':'#f59e0b'}">${c.ratio}%</b>
+        <span class="text-[11px] text-ink-4">${c.n}</span>
+      </div>`).join('');
+  }
+
+  /* ========== Tab 切换 ========== */
+  document.getElementById('mainTabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;
+    document.querySelectorAll('#mainTabs button').forEach(x=>x.classList.toggle('on',x===b));
+    const v=b.dataset.v; document.getElementById('tab-tag').classList.toggle('hidden',v!=='tag');
+    document.getElementById('tab-cluster').classList.toggle('hidden',v!=='cluster');
+    if(v==='cluster'){ renderClusterList(); setTimeout(()=>quadChart.resize(),50); }
+  };
+  document.getElementById('trackTabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;
+    trackTab=b.dataset.v; document.querySelectorAll('#trackTabs button').forEach(x=>x.classList.toggle('on',x===b)); renderTagList();
+  };
+  document.getElementById('clusterTabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;
+    const v=b.dataset.v; document.querySelectorAll('#clusterTabs button').forEach(x=>x.classList.toggle('on',x===b));
+    document.getElementById('sub-quad').classList.toggle('hidden',v!=='quad');
+    document.getElementById('sub-fine').classList.toggle('hidden',v!=='fine');
+    if(v==='fine') setTimeout(()=>fineChart.resize(),50);
+  };
+  document.getElementById('presets').onchange=()=>{ const b=document.getElementById('srcBadge'); b.style.background='#e9f8ef'; b.style.color='#19a558'; b.innerHTML='<i data-lucide="zap" class="w-3.5 h-3.5"></i><span>实时聚合 · 时间子集</span>'; lucide.createIcons(); };
+
+  /* ========== 初始化 ========== */
+  renderKpi(); renderTagList(); renderCatStats(); renderLegend(); renderQuad(); renderClusterList(); renderFineStats(); renderFineList();
+  lucide.createIcons();
+  window.addEventListener('resize',()=>{weekChart.resize();dayChart.resize();quadChart.resize();fineChart.resize();});
+  </script>
+</body>
+</html>

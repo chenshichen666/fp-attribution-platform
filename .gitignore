@@ -1,0 +1,38 @@
+# ===== 依赖 =====
+node_modules/
+server/node_modules/
+
+# ===== 构建产物 =====
+dist/
+.vite/
+*.tsbuildinfo
+
+# ===== 日志 =====
+*.log
+server.log
+npm-debug.log*
+yarn-error.log*
+
+# ===== 环境变量（含密钥，禁止入库）=====
+.env
+.env.local
+.env.*.local
+server/.env
+
+# ===== 系统 / 编辑器 =====
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# ===== 运行时上传物 =====
+server/public/uploads/*
+!server/public/uploads/.gitkeep
+
+# ===== 临时调试脚本 =====
+check_*.mjs
+devcloud-run.sh
+
+# 注：server/data/fp_attribution.db 为演示数据，特意保留入库，
+#     便于 clone 后无需额外初始化即可看到完整平台效果。

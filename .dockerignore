@@ -1,0 +1,40 @@
+.git
+.gitignore
+.agent
+.with
+
+# 依赖目录（容器内重装）
+node_modules
+server/node_modules
+
+# 构建产物（容器内重装）
+dist
+
+# Python 缓存
+__pycache__
+*.pyc
+*.pyo
+
+# 日志与环境变量
+*.log
+logs
+.env
+.env.*
+server/.env
+*.env
+
+# IDE 与操作系统文件
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.swp
+
+# 临时文件
+tmp
+temp
+coverage
+.cache
+
+# 临时调试脚本
+server/tmp_check.js

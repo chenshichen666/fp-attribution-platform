@@ -1,0 +1,38 @@
+# Version control
+.git
+.gitignore
+
+# Dependencies (will be installed in container)
+node_modules
+server/node_modules
+
+# Build artifacts
+dist
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Documentation
+README.md
+docs
+
+# Environment
+.env
+.env.local
+*.env
+
+# Misc
+coverage
+.cache
+tmp
+temp

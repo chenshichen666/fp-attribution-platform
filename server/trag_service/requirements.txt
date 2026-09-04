@@ -1,0 +1,5 @@
+trag>=0.0.50
+requests
+fastapi
+uvicorn
+pymysql

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>总览（误杀样本分析）· v9 布局原型 v2</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    /* ===== 复刻平台 src/style.css 设计令牌 ===== */
+    :root{
+      --brand:#4f7cff; --brand-strong:#4569f5; --brand-soft:#eef2ff;
+      --orange:#f5a000; --orange-soft:#fff4e0;
+      --red:#f0454b; --red-soft:#fdeced;
+      --green:#1fb574; --green-soft:#e6f7ef;
+      --purple:#7c6df0;
+      --text-1:#1d2433; --text-2:#5a6478; --text-3:#8b94a8; --text-4:#aeb6c6;
+      --bg-page:#f4f6fb; --bg-card:#fff; --bg-soft:#f7f9fc;
+      --border:#eaedf3; --border-strong:#dfe3ec;
+      --shadow-sm:0 1px 3px rgba(31,41,64,.04),0 1px 2px rgba(31,41,64,.03);
+      --shadow-md:0 4px 16px rgba(31,41,64,.06);
+      --r-sm:8px; --r-md:12px; --r-lg:16px; --r-xl:20px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;background:var(--bg-page);color:var(--text-1);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+    ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#d4dae6;border-radius:8px}
+    .card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm)}
+    .page-wrap{max-width:1500px;margin:0 auto;padding:28px 28px 60px}
+    .page-title{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:700}
+    .page-sub{color:var(--text-3);font-size:13px;margin-top:6px}
+    /* 按钮 */
+    .btn{display:inline-flex;align-items:center;gap:6px;height:38px;padding:0 18px;border-radius:10px;font-size:14px;font-weight:500;transition:all .2s;white-space:nowrap;border:1px solid transparent}
+    .btn svg{width:16px;height:16px}.btn-primary{background:var(--brand);color:#fff;box-shadow:0 4px 12px rgba(79,124,255,.25)}
+    .btn-primary:hover{background:var(--brand-strong)}.btn-ghost{background:#fff;color:var(--text-1);border-color:var(--border-strong)}
+    .btn-ghost:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-soft)}
+    .btn-sm{height:32px;padding:0 14px;font-size:13px;border-radius:8px}
+    /* 徽章 */
+    .badge{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:600;line-height:1}
+    .badge-orange{background:var(--orange-soft);color:#c87f00}.badge-red{background:var(--red-soft);color:var(--red)}
+    .badge-green{background:var(--green-soft);color:var(--green)}.badge-blue{background:var(--brand-soft);color:var(--brand)}
+    .badge-purple{background:#f0eefc;color:var(--purple)}.badge-gray{background:#f0f2f6;color:var(--text-2)}
+    /* KPI 卡（复刻 KpiCard.vue） */
+    .kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:18px}
+    .kpi{position:relative;padding:18px 20px;overflow:hidden;transition:transform .25s,box-shadow .25s,border-color .2s;border:1px solid transparent}
+    .kpi:hover{transform:translateY(-3px);box-shadow:var(--shadow-md)}
+    .kpi-top{display:flex;align-items:center;gap:10px}
+    .kpi-ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center}
+    .kpi-label{font-size:13px;color:var(--text-2);font-weight:500}
+    .kpi-tag{margin-left:auto;font-size:10px;color:var(--text-4);background:#f0f2f6;padding:2px 7px;border-radius:6px}
+    .kpi-val{font-size:28px;font-weight:800;margin-top:10px;letter-spacing:-.5px;line-height:1}
+    .kpi-val small{font-size:13px;font-weight:600;margin-left:3px;color:var(--text-3)}
+    .kpi-delta{display:inline-flex;align-items:center;gap:2px;font-size:11px;margin-top:6px;font-weight:600}
+    .kpi-delta.up{color:var(--green)}.kpi-delta.down{color:var(--red)}.kpi-delta.flat{color:var(--text-4)}
+    .kpi-blob{position:absolute;right:-26px;top:-26px;width:84px;height:84px;border-radius:50%;opacity:.55}
+    /* 顶部分段 Tab（复刻 seg-tabs） */
+    .seg-tabs{display:inline-flex;background:#f0f2f6;border-radius:11px;padding:3px}
+    .seg-tabs button{display:flex;align-items:center;gap:7px;padding:8px 18px;border-radius:9px;font-size:14px;color:var(--text-2);font-weight:500;transition:all .18s}
+    .seg-tabs button.on{background:#fff;color:var(--text-1);box-shadow:var(--shadow-sm);font-weight:600}
+    .seg-tabs .dot{width:7px;height:7px;border-radius:50%}.seg-tabs b{color:var(--text-4);font-weight:700}
+    .seg-tabs button.on b{color:var(--brand)}
+    /* 全局时间栏（复刻 DateRangeFilter） */
+    .gdb-outer{display:flex;justify-content:flex-end;margin-bottom:18px}
+    .global-date-bar{display:inline-flex;align-items:center;gap:12px;padding:8px 14px;background:#fff;border:1px solid var(--border-strong);border-radius:14px;flex-wrap:wrap;box-shadow:var(--shadow-sm)}
+    .gdb-ic{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:var(--brand);color:#fff;flex:none}
+    .gdb-label{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:500;color:var(--text-3);white-space:nowrap}
+    .drf{display:flex;align-items:center;gap:10px}
+    .drf-presets{display:flex;background:#f0f2f6;border-radius:9px;padding:3px}
+    .drf-btn{padding:5px 13px;border-radius:7px;font-size:12px;color:var(--text-2);font-weight:500;transition:all .15s;white-space:nowrap}
+    .drf-btn.on{background:#fff;color:var(--brand);box-shadow:var(--shadow-sm);font-weight:600}
+    .drf-custom{display:flex;align-items:center;gap:6px;padding:3px 3px 3px 10px;border:1.5px solid var(--text-4);border-radius:9px;background:#fff;transition:all .18s}
+    .drf-custom.on{border-color:var(--brand);box-shadow:0 0 0 3px rgba(79,124,255,.12)}
+    .drf-custom input[type=date]{height:30px;padding:0 8px;border:none;outline:none;background:transparent;font-size:13px;color:var(--text-1);font-weight:600;cursor:pointer}
+    .drf-sep{font-size:13px;color:var(--text-2);font-weight:600}
+    /* 卡片头 */
+    .card-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;flex-wrap:wrap}
+    .card-hd h3{font-size:16px;font-weight:700}.hint{font-size:12px;color:var(--text-4)}
+    .chart-card,.list-card{padding:22px 24px;margin-bottom:18px}
+    /* 搜索框 */
+    .search{display:flex;align-items:center;gap:8px;height:38px;padding:0 14px;border:1px solid var(--border-strong);border-radius:10px;color:var(--text-3);min-width:220px;transition:all .18s}
+    .search:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px rgba(79,124,255,.12)}
+    .search input{flex:1;font-size:14px;color:var(--text-1);border:none;outline:none;background:transparent}
+    .sort-btn{display:flex;align-items:center;gap:5px;margin-left:auto;height:38px;padding:0 14px;border:1px solid var(--border-strong);border-radius:10px;font-size:13px;color:var(--text-2);transition:all .18s}
+    .sort-btn:hover{border-color:var(--brand);color:var(--brand)}
+    /* 标签跟踪表 */
+    .tag-table{display:flex;flex-direction:column}
+    .tt-head,.tt-row{display:grid;grid-template-columns:.8fr 1fr 1.2fr .7fr .7fr 1fr 1.1fr;align-items:center}
+    .tt-head{padding:12px 8px;background:var(--bg-soft);border-radius:10px;font-size:13px;font-weight:600;color:var(--text-3);margin-bottom:4px}
+    .tt-head>span{text-align:center}.tt-row{padding:13px 8px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .18s}
+    .tt-row:last-child{border-bottom:none}.tt-row:hover{background:var(--bg-soft)}
+    .tt-row>span{display:flex;align-items:center;justify-content:center}
+    .tid-val{font-size:14px;font-weight:600;color:var(--text-2)}.name-val{font-size:14px;font-weight:600;color:var(--text-1)}
+    .prec-cell{gap:10px;padding:0 8px}.bar-track{flex:1;max-width:180px;height:8px;background:#eef1f6;border-radius:6px;overflow:hidden}
+    .bar-track i{display:block;height:100%;border-radius:6px;transition:width .6s cubic-bezier(.16,1,.3,1)}
+    .bar-val{font-size:14px;font-weight:700;min-width:48px;text-align:left}
+    .star{cursor:pointer;color:var(--text-4);transition:all .15s}.star.on{color:#f5b301}
+    /* 聚类簇：7类统计卡 */
+    .cat-stats{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:16px}
+    .cat-stat{padding:14px 16px;border-radius:12px;border:1px solid var(--border);background:#fff;position:relative;overflow:hidden}
+    .cat-stat .cs-bar{position:absolute;left:0;top:0;bottom:0;width:4px}
+    .cat-stat .cs-name{font-size:12px;color:var(--text-3);font-weight:500;display:flex;align-items:center;gap:6px}
+    .cat-stat .cs-val{font-size:22px;font-weight:800;margin-top:6px;line-height:1}
+    .cat-stat .cs-sub{font-size:11px;color:var(--text-4);margin-top:3px}
+    /* tabBar / segBar */
+    .tabbar{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:14px}
+    .tabbar button{flex:none;padding:7px 14px;border-radius:9px;font-size:13px;font-weight:500;color:var(--text-2);background:#f0f2f6;transition:all .15s;border:1px solid transparent;white-space:nowrap}
+    .tabbar button.on{background:#fff;color:var(--brand);border-color:#d6e0ff;box-shadow:var(--shadow-sm)}
+    .tabbar button.tagbtn{flex-direction:column;align-items:center;gap:3px;padding:7px 13px;line-height:1.15}
+    .tabbar button.tagbtn .tb-id{font-size:13px;font-weight:600}
+    .tabbar button.tagbtn .tb-name{font-size:10px;font-weight:400;color:var(--text-3);max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tabbar button.tagbtn.on .tb-name{color:var(--brand)}
+    .segbar{display:inline-flex;background:#f0f2f6;border-radius:9px;padding:3px}
+    .segbar button{padding:6px 16px;border-radius:7px;font-size:13px;color:var(--text-2);font-weight:500;transition:all .15s}
+    .segbar button.on{background:#fff;color:var(--brand);box-shadow:var(--shadow-sm)}
+    /* 主布局 */
+    .main-layout{display:grid;grid-template-columns:1fr 360px;gap:18px;align-items:start}
+    .list-panel{max-height:460px;overflow-y:auto;padding-right:4px}
+    .cl-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer;transition:background .15s;border:1px solid transparent}
+    .cl-row:hover{background:var(--bg-soft)}.cl-row.hl{background:var(--brand-soft);border-color:#d6e0ff;box-shadow:inset 3px 0 0 var(--brand)}
+    .cl-row .cl-id{font-size:13px;font-weight:700;color:var(--text-1);width:42px}
+    .cl-row .cl-meta{flex:1;font-size:12px;color:var(--text-3)}
+    .cl-row .cl-n{font-size:12px;color:var(--text-2);font-weight:600}
+    .pin{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
+    /* 可折叠指标面板 */
+    .metric-panel{margin-top:16px;border:1px solid var(--border);border-radius:12px;background:var(--bg-soft);overflow:hidden}
+    .metric-head{display:flex;align-items:center;gap:8px;padding:14px 18px;cursor:pointer;font-weight:600;font-size:14px}
+    .metric-head svg{transition:transform .2s}.metric-head.collapsed svg{transform:rotate(-90deg)}
+    .metric-body{padding:0 18px 16px;display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    .metric-item{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-2);background:#fff;border:1px solid var(--border);border-radius:9px;padding:8px 10px}
+    .metric-item b{color:var(--text-1)}
+    .fine-mp{border-left:4px solid var(--orange);background:#fff8ef;border-radius:10px;padding:14px 18px;margin-top:16px;font-size:13px;color:var(--text-2);line-height:1.7}
+    .fine-mp b{color:var(--text-1)}
+    /* 空状态（复刻 EmptyState.vue） */
+    .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:56px 20px;text-align:center}
+    .empty-ic{width:88px;height:88px;border-radius:24px;background:linear-gradient(135deg,#eef2ff,#f4f6fb);display:grid;place-items:center;color:var(--brand);margin-bottom:18px}
+    .empty-title{font-size:16px;font-weight:600;color:var(--text-1)}.empty-desc{font-size:13px;color:var(--text-3);margin-top:8px;max-width:360px;line-height:1.7}
+    /* 抽屉弹窗 */
+    .mask{position:fixed;inset:0;background:rgba(29,36,51,.32);z-index:40;display:none}
+    .mask.show{display:block}
+    .drawer{position:fixed;top:0;right:0;height:100%;width:100%;max-width:560px;background:#fff;box-shadow:-12px 0 40px rgba(20,30,60,.12);z-index:50;transform:translateX(100%);transition:transform .28s cubic-bezier(.16,1,.3,1);display:flex;flex-direction:column}
+    .drawer.show{transform:translateX(0)}
+    .drawer-hd{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border)}
+    .drawer-hd h2{font-size:17px;font-weight:700}.drawer-bd{flex:1;overflow-y:auto;padding:18px 24px;space-y:8px}
+    .el-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+    .el-thumb{width:48px;height:48px;border-radius:9px;flex:none;display:grid;place-items:center;color:#fff;font-size:18px}
+    .el-info{flex:1;min-width:0}.el-fp{font-family:monospace;font-size:11px;color:var(--text-3)}
+    .el-val{font-size:13px;color:var(--text-1);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .hit{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px}
+    .hit.m{background:var(--brand-soft);color:var(--brand)}.hit.h{background:var(--green-soft);color:var(--green)}
+    .spin{width:18px;height:18px;border:2px solid var(--border-strong);border-top-color:var(--brand);border-radius:50%;animation:lspin .7s linear infinite;display:inline-block}
+    @keyframes lspin{to{transform:rotate(360deg)}}
+    @media(max-width:1100px){.kpi-row{grid-template-columns:repeat(3,1fr)}.cat-stats{grid-template-columns:repeat(4,1fr)}.main-layout{grid-template-columns:1fr}}
+    @media(max-width:680px){.kpi-row{grid-template-columns:repeat(2,1fr)}.cat-stats{grid-template-columns:repeat(2,1fr)}.metric-body{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="page-wrap">
+    <!-- 页头 -->
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px;gap:16px;flex-wrap:wrap">
+      <div>
+        <h1 class="page-title"><i data-lucide="layout-dashboard" style="color:var(--brand)"></i>总览</h1>
+        <p class="page-sub">原「误杀样本分析」· v9 改造布局原型（仅原型，未改动平台代码）</p>
+      </div>
+      <button class="btn btn-ghost btn-sm"><i data-lucide="link"></i>分享</button>
+    </div>
+
+    <!-- 控制条：左时间窗口 · 右 标签/聚类簇 双 Tab -->
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap">
+      <div class="global-date-bar" style="padding:5px 10px;gap:8px">
+        <span class="gdb-ic" style="width:20px;height:20px;border-radius:6px"><i data-lucide="clock" style="width:11px;height:11px;color:#fff"></i></span>
+        <div class="drf" id="drf" style="gap:6px">
+          <div class="drf-presets" style="padding:2px">
+            <button class="drf-btn" data-p="1" style="padding:4px 10px;font-size:11px">前1天</button>
+            <button class="drf-btn on" data-p="7" style="padding:4px 10px;font-size:11px">前7天</button>
+            <button class="drf-btn" data-p="30" style="padding:4px 10px;font-size:11px">前30天</button>
+          </div>
+          <div class="drf-custom" id="drfCustom" style="padding:2px 2px 2px 8px;gap:4px">
+            <input type="date" id="dStart" style="height:26px;padding:0 6px;font-size:12px" /> <span class="drf-sep" style="font-size:12px">至</span> <input type="date" id="dEnd" style="height:26px;padding:0 6px;font-size:12px" />
+          </div>
+        </div>
+      </div>
+      <div class="seg-tabs" id="mainTabs">
+        <button data-v="tag" class="on"><i data-lucide="tags" style="width:16px;height:16px"></i>标签</button>
+        <button data-v="cluster"><i data-lucide="box" style="width:16px;height:16px"></i>聚类簇</button>
+      </div>
+    </div>
+
+    <!-- ============ 标签 Tab ============ -->
+    <section id="tab-tag">
+      <!-- KPI 6 卡 -->
+      <div class="kpi-row" id="kpiRow"></div>
+
+    <!-- 双趋势图（纵向堆叠，非并列） -->
+      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:18px">
+        <div class="card chart-card">
+          <div class="card-hd">
+            <h3>周维度精度趋势</h3>
+          </div>
+<div id="weekChart" style="height:360px"></div>
+        </div>
+        <div class="card chart-card">
+          <div class="card-hd">
+            <h3>日维度精度趋势</h3>
+          </div>
+<div id="dayChart" style="height:380px"></div>
+        </div>
+      </div>
+
+      <!-- 标签跟踪 -->
+      <div class="card list-card">
+        <div class="card-hd">
+          <h3 style="font-size:16px;font-weight:700">标签跟踪</h3>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <div class="search" style="height:34px;min-width:200px">
+              <i data-lucide="search" style="width:15px;height:15px"></i>
+              <input id="tagSearch" placeholder="搜索标签 ID / 名称" />
+            </div>
+            <div class="seg-tabs" id="trackTabs">
+              <button data-v="all" class="on">全部 <b id="cAll"></b></button>
+              <button data-v="abn"><span class="dot" style="background:var(--red)"></span>异常 <b id="cAbn"></b></button>
+              <button data-v="watch"><i data-lucide="star" style="width:14px;height:14px"></i>我的关注 <b id="cWatch"></b></button>
+            </div>
+          </div>
+        </div>
+        <div class="tag-table">
+          <div class="tt-head">
+            <span style="text-align:left;padding-left:6px">标签ID</span><span>标签名</span><span>当周精度</span><span>状态</span><span>FP 数</span><span>精度排序</span><span>误杀归因</span>
+          </div>
+          <div id="tagList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 聚类簇 Tab ============ -->
+    <section id="tab-cluster" style="display:none">
+      <div class="seg-tabs" id="clusterTabs" style="margin-bottom:18px">
+        <button data-v="quad" class="on"><i data-lucide="scatter-chart" style="width:16px;height:16px"></i>象限分析</button>
+        <button data-v="fine"><i data-lucide="bar-chart-3" style="width:16px;height:16px"></i>精标数据</button>
+      </div>
+
+      <!-- 子 Tab1 象限分析 -->
+      <div id="sub-quad">
+        <div class="card-hd">
+          <div>
+            <h3 style="font-size:16px;font-weight:700">象限分析 · 标签 × 元素类型 × 聚类簇</h3>
+            <p class="hint" id="quadSub">AI评测数据 · 机审/人审标签占比 × 记录数 · 按当前时间窗口聚合</p>
+          </div>
+        </div>
+        <div class="cat-stats" id="catStats"></div>
+        <div class="tabbar" id="quadLabelBar"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
+          <div class="segbar" id="quadSeg">
+            <button data-v="all" class="on">全部</button>
+            <button data-v="image">图片</button>
+            <button data-v="video">视频</button>
+          </div>
+          <div id="quadLegend" style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px"></div>
+        </div>
+        <div class="main-layout">
+          <div class="card chart-card">
+            <div id="quadChart" style="height:440px"></div>
+          </div>
+          <div class="card" style="padding:16px">
+            <div class="card-hd" style="margin-bottom:10px"><h3 style="font-size:14px">聚类簇列表</h3>
+              <select id="quadSort" class="search" style="height:32px;min-width:auto;padding:0 8px;font-size:12px">
+                <option value="n">按规模排序</option>
+                <option value="m">按机审%排序</option>
+                <option value="h">按人审%排序</option>
+              </select>
+            </div>
+            <div class="list-panel" id="clusterList"></div>
+          </div>
+        </div>
+        <!-- 可折叠指标解释面板 -->
+        <div class="metric-panel" id="metricPanel">
+          <div class="metric-head" id="metricToggle"><i data-lucide="info"></i>指标解释 · 七类人机分歧口径 <i data-lucide="chevron-down" style="margin-left:auto"></i></div>
+          <div class="metric-body" id="metricBody"></div>
+        </div>
+      </div>
+
+      <!-- 子 Tab2 精标数据 -->
+      <div id="sub-fine" style="display:none">
+        <div class="card-hd">
+          <div>
+            <h3 style="font-size:16px;font-weight:700">样本库精标数据 · 簇明细</h3>
+            <p class="hint" id="fineSub">基于 sample_library_fine_label 表</p>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="toggleEmpty"><i data-lucide="eye-off"></i>模拟未上传数据</button>
+        </div>
+        <div id="fineContent">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px" id="fineStats"></div>
+          <div class="tabbar" id="fineLabelBar"></div>
+          <div style="margin-bottom:12px"><div class="segbar" id="fineSeg">
+            <button data-v="all" class="on">全部</button>
+            <button data-v="image">图片</button>
+            <button data-v="video">视频</button>
+          </div></div>
+          <div class="main-layout">
+            <div class="card chart-card"><div id="fineChart" style="height:320px"></div></div>
+            <div class="card" style="padding:16px">
+              <div class="card-hd" style="margin-bottom:10px"><h3 style="font-size:14px">含该标签的簇列表</h3></div>
+              <div class="list-panel" id="fineList"></div>
+            </div>
+          </div>
+          <div class="fine-mp" id="fineMp"></div>
+        </div>
+        <div id="fineEmpty" style="display:none"></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 簇明细抽屉 -->
+  <div class="mask" id="mask"></div>
+  <aside class="drawer" id="drawer">
+    <div class="drawer-hd">
+      <div><h2 id="dTitle">簇明细</h2><span class="page-sub" id="dSub"></span></div>
+      <button id="drawerClose" style="color:var(--text-4)"><i data-lucide="x"></i></button>
+    </div>
+    <div class="drawer-bd" id="dBody"></div>
+  </aside>
+
+  <p style="text-align:center;font-size:12px;color:var(--text-4);margin-top:24px;margin-bottom:24px">由 <a href="https://platform.example.com/" style="color:#8A2BE2" target="_blank">With</a> 通过自然语言生成</p>
+
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>误杀样本分析 · 改造布局原型</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: '#4f7cff',
+            'brand-soft': '#eef2ff',
+            ink: { 1: '#1a2233', 2: '#2d3650', 3: '#5a6478', 4: '#8b94a8' },
+          },
+          fontFamily: { sans: ['Inter', 'system-ui', 'PingFang SC', 'Microsoft YaHei', 'sans-serif'] },
+        },
+      },
+    }
+  </script>
+  <style>
+    body { background: #f5f7fb; }
+    .card { background: #fff; border: 1px solid #eef1f6; border-radius: 16px; box-shadow: 0 2px 8px rgba(20,30,60,.04); }
+    .chip { padding: 6px 13px; border-radius: 9px; font-size: 13px; font-weight: 500; color: #5a6478; background: #f0f2f6; transition: all .18s; }
+    .chip.on { background: #fff; color: #1a2233; box-shadow: 0 1px 4px rgba(20,30,60,.08); }
+    .seg button { padding: 6px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; color: #5a6478; transition: all .18s; display: inline-flex; align-items: center; gap: 6px; }
+    .seg button.on { background: #fff; color: #1a2233; box-shadow: 0 1px 4px rgba(20,30,60,.08); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+    .tbl-grid { display: grid; grid-template-columns: 0.5fr 1fr 1.2fr 1.2fr 2.6fr 1fr 1.8fr 1.8fr; }
+    .spin { width: 18px; height: 18px; border: 2px solid #e3e8f2; border-top-color: #4f7cff; border-radius: 50%; animation: sp .7s linear infinite; }
+    @keyframes sp { to { transform: rotate(360deg); } }
+    .drawer { transition: transform .28s cubic-bezier(.16,1,.3,1); }
+    .bar { height: 8px; background: #eef1f6; border-radius: 6px; overflow: hidden; }
+    .bar > i { display: block; height: 100%; border-radius: 6px; transition: width .6s cubic-bezier(.16,1,.3,1); }
+    .badge { padding: 3px 9px; border-radius: 7px; font-size: 12px; font-weight: 600; }
+    .b-red { background: #fdecec; color: #e23a3a; } .b-orange { background: #fff3e6; color: #e8851a; }
+    .b-green { background: #e9f8ef; color: #19a558; } .b-gray { background: #f0f2f6; color: #8b94a8; }
+    input.rin { width: 100%; max-width: 220px; height: 36px; padding: 0 12px; border: 1px solid #e3e8f2; border-radius: 9px; font-size: 13px; text-align: center; transition: all .18s; }
+    input.rin:focus { border-color: #4f7cff; box-shadow: 0 0 0 3px rgba(79,124,255,.12); outline: none; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: #d4dae6; border-radius: 8px; }
+  </style>
+</head>
+<body class="font-sans text-ink-1">
+  <div class="max-w-[1400px] mx-auto px-6 py-7">
+
+    <!-- ===== 改造说明条（仅原型用，落地时可删） ===== -->
+    <div class="card mb-5 px-5 py-3 flex items-start gap-3 border-l-4" style="border-color:#8A2BE2;background:#faf6ff">
+      <i data-lucide="info" class="text-[#8A2BE2] mt-0.5"></i>
+      <div class="text-[12.5px] text-ink-2 leading-relaxed">
+        <b class="text-ink-1">布局原型 · 改造假设（待你确认）</b>：① 顶部新增「数据源状态徽章」区分
+        <b>实时聚合(时间子集)</b>与<b>快照(全量)</b>，规避精度跳变困惑；② 行内归因/备注改为<b>带保存态</b>（原型演示）；
+        ③ 标签详情改为<b>右侧抽屉</b>下钻，保留主列表上下文；④ 提需入口在明细选择模式下常驻浮条。
+      </div>
+    </div>
+
+    <!-- ===== 顶部标题 + 时间窗口 + 操作 ===== -->
+    <div class="flex items-start justify-between gap-4 flex-wrap mb-5">
+      <div>
+        <h1 class="text-[22px] font-bold flex items-center gap-2"><i data-lucide="radar" class="text-brand"></i>误杀样本分析</h1>
+        <p class="text-[13px] text-ink-3 mt-1">上传评测数据，自动统计标签精度与误杀率，下钻定位高误杀标签</p>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <!-- 时间窗口 -->
+        <div class="flex items-center gap-2 card px-3 py-2">
+          <i data-lucide="clock" class="w-[15px] h-[15px] text-brand"></i>
+          <span class="text-[13px] text-ink-3">时间窗口</span>
+          <select id="presets" class="text-[13px] border border-[#e3e8f2] rounded-md px-2 py-1 bg-white">
+            <option value="">自定义</option><option value="7">近7天</option><option value="14" selected>近14天</option><option value="30">近30天</option>
+          </select>
+        </div>
+        <!-- 数据源状态徽章（改造点①） -->
+        <span id="srcBadge" class="badge b-green flex items-center gap-1.5"><i data-lucide="zap" class="w-3.5 h-3.5"></i><span>实时聚合 · 时间子集</span></span>
+        <button id="shareBtn" class="chip flex items-center gap-1.5"><i data-lucide="link" class="w-4 h-4"></i>分享</button>
+        <button id="ticketBtn" class="chip flex items-center gap-1.5"><i data-lucide="ticket" class="w-4 h-4"></i>提需</button>
+      </div>
+    </div>
+
+    <!-- ===== 空态（改造点：加载态与无数据态分离） ===== -->
+    <div id="emptyState" class="card hidden flex-col items-center justify-center py-16 text-center">
+      <i data-lucide="database" class="w-10 h-10 text-ink-4 mb-3"></i>
+      <strong class="text-[15px]">暂无评测数据</strong>
+      <em class="text-[12px] not-italic text-ink-3 mt-1">请等待管理员上传评测数据</em>
+      <button class="btn mt-4 px-4 py-2 rounded-lg bg-brand text-white text-[13px] font-medium">前往数据管理</button>
+    </div>
+
+    <!-- ===== 主体 ===== -->
+    <div id="main" class="space-y-4">
+      <!-- KPI 行 -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="card p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-xl bg-brand-soft text-brand grid place-items-center"><i data-lucide="layers"></i></div><div><span class="text-[12px] text-ink-3">总样本</span><b class="block text-[22px] leading-tight" id="kpiTotal">—</b></div></div>
+        <div class="card p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-xl bg-orange-50 text-orange-500 grid place-items-center"><i data-lucide="alert-triangle"></i></div><div><span class="text-[12px] text-ink-3">FP 数</span><b class="block text-[22px] leading-tight" id="kpiFp">—</b></div></div>
+        <div class="card p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-xl bg-green-50 text-green-500 grid place-items-center"><i data-lucide="target"></i></div><div><span class="text-[12px] text-ink-3">查准率</span><b class="block text-[22px] leading-tight" id="kpiPrec">—</b></div></div>
+        <div class="card p-5 flex items-center gap-4 cursor-pointer hover:shadow-md transition" id="kpiTagBtn"><div class="w-11 h-11 rounded-xl bg-purple-50 text-purple-500 grid place-items-center"><i data-lucide="tags"></i></div><div><span class="text-[12px] text-ink-3">标签数</span><b class="block text-[22px] leading-tight" id="kpiTag">—</b></div></div>
+      </div>
+
+      <!-- 主体两栏 -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <!-- 左主栏：精度图表 -->
+        <div class="card p-5 lg:col-span-2">
+          <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h3 class="text-[16px] font-bold">各标签精度</h3>
+            <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 border border-[#e3e8f2] rounded-lg px-3 h-9"><i data-lucide="search" class="w-4 h-4 text-ink-3"></i><input id="chartKw" placeholder="标签ID/名" class="text-[13px] outline-none w-[120px] bg-transparent" /></div>
+              <select id="chartSort" class="text-[13px] border border-[#e3e8f2] rounded-lg px-2 h-9 bg-white"><option value="desc">精度降序</option><option value="asc">精度升序</option></select>
+            </div>
+          </div>
+          <div id="chart" style="height:320px"></div>
+        </div>
+
+        <!-- 右栏：全局概览小卡（改造点③：把部分详情分布前置） -->
+        <div class="space-y-4">
+          <div class="card p-5">
+            <h3 class="text-[14px] font-bold mb-3">素材类型分布</h3>
+            <div id="pieEl" style="height:200px"></div>
+          </div>
+          <div class="card p-5">
+            <h3 class="text-[14px] font-bold mb-3">高误杀行业 Top</h3>
+            <div id="barInd" style="height:200px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 标签明细表 -->
+      <div class="card p-5">
+        <div id="flowTip" class="hidden items-center gap-2 mb-3 px-4 py-2 bg-brand-soft rounded-lg text-[13px] text-brand"><i data-lucide="ticket"></i><span>提需流程中：勾选素材后点击底部「发起提需」</span></div>
+        <div class="flex items-center gap-3 flex-wrap mb-3">
+          <div class="flex items-center gap-2 border border-[#e3e8f2] rounded-lg px-3 h-9 flex-1 min-w-[220px]"><i data-lucide="search" class="w-4 h-4 text-ink-3"></i><input id="kw" placeholder="搜索标签 ID / 名称…" class="text-[14px] outline-none flex-1 bg-transparent" /></div>
+          <div class="seg flex bg-[#f0f2f6] rounded-lg p-1" id="segTabs">
+            <button data-v="all" class="on">全部 <b class="text-ink-4" id="cAll"></b></button>
+            <button data-v="red"><i class="dot" style="background:#e23a3a"></i>精度异常 <b class="text-ink-4" id="cRed"></b></button>
+            <button data-v="orange"><i class="dot" style="background:#e8851a"></i>精度关注 <b class="text-ink-4" id="cOrange"></b></button>
+            <button data-v="green"><i class="dot" style="background:#19a558"></i>精度正常 <b class="text-ink-4" id="cGreen"></b></button>
+          </div>
+          <button id="sortBtn" class="chip flex items-center gap-1.5"><i data-lucide="arrow-down-wide-narrow" class="w-4 h-4"></i>精度降序</button>
+          <button id="selModeBtn" class="chip flex items-center gap-1.5"><i data-lucide="check-square" class="w-4 h-4"></i>选择</button>
+        </div>
+
+        <div id="listLoading" class="hidden items-center justify-center gap-2 py-12 text-[14px] text-ink-3"><span class="spin"></span>正在加载标签数据…</div>
+        <div id="tableWrap" class="tbl-grid text-[13px]">
+          <div class="font-semibold text-ink-3 py-3 px-2 bg-[#f7f9fc] rounded-lg text-center">序号</div>
+          <div class="font-semibold text-ink-3 py-3 px-2 bg-[#f7f9fc] rounded-lg text-center">标签ID</div>
+          <div class="font-semibold text-ink-3 py-3 px-2 bg-[#f7f9fc] rounded-lg text-center">标签名</div>
+          <div class="font-semibold text-ink-3 py-3 px-2 bg-[#f7f9fc] rounded-lg text-center">状态</div>
+          <div class="font-semibold text-ink-3 py-3 px-2 bg-[#f7f9fc] rounded-lg text-center">精度</div>
+          <div class="font-semibold text-ink-3 py-3 px-2 bg-[#f7f9fc] rounded-lg text-center">精度排序</div>
+          <div class="font-semibold text-ink-3 py-3 px-2 bg-[#f7f9fc] rounded-lg text-center">误杀归因</div>
+          <div class="font-semibold text-ink-3 py-3 px-2 bg-[#f7f9fc] rounded-lg text-center">备注</div>
+          <!-- rows injected -->
+        </div>
+        <div id="emptyList" class="hidden text-center py-12 text-ink-3 text-[14px]"><i data-lucide="search" class="inline w-5 h-5"></i> 无匹配结果</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 标签详情抽屉（改造点③：右侧抽屉下钻） ===== -->
+  <div id="mask" class="fixed inset-0 bg-black/30 hidden z-40"></div>
+  <aside id="drawer" class="drawer fixed top-0 right-0 h-full w-full max-w-[640px] bg-white shadow-2xl z-50 translate-x-full flex flex-col">
+    <div class="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+      <div>
+        <div class="flex items-center gap-2"><button id="drawerBack" class="text-ink-3 hover:text-brand"><i data-lucide="arrow-left"></i></button><h2 class="text-[17px] font-bold" id="dTag">标签详情</h2></div>
+        <span id="dStatus" class="badge b-gray mt-1"></span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="toClassify" class="chip flex items-center gap-1.5"><i data-lucide="layers" class="w-4 h-4"></i>去素材特征分类</button>
+        <button id="drawerClose" class="text-ink-4 hover:text-ink-1"><i data-lucide="x"></i></button>
+      </div>
+    </div>
+    <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+      <div class="grid grid-cols-3 gap-3">
+        <div class="card p-4 text-center"><span class="text-[12px] text-ink-3">精度</span><b class="block text-[20px]" id="dPrec">—</b></div>
+        <div class="card p-4 text-center"><span class="text-[12px] text-ink-3">FP 数</span><b class="block text-[20px]" id="dFp">—</b></div>
+        <div class="card p-4 text-center"><span class="text-[12px] text-ink-3">样本数</span><b class="block text-[20px]" id="dSample">—</b></div>
+      </div>
+      <div class="card p-4"><h4 class="text-[14px] font-bold mb-2">误杀分布</h4><div id="dDist" style="height:220px"></div></div>
+      <div class="card p-4"><h4 class="text-[14px] font-bold mb-2">FP 素材明细</h4><div id="dSamples" class="space-y-2 text-[13px] text-ink-2"></div></div>
+    </div>
+  </aside>
+
+  <p class="text-center text-[12px] text-ink-4 mt-8">由 <a href="https://platform.example.com/" style="color: #8A2BE2;" target="_blank">With</a> 通过自然语言生成</p>
+
+  <script>
+    // ===== Mock 数据 =====
+    const TAGS = Array.from({length: 24}, (_, i) => {
+      const id = 14000 + i * 13;
+      const p = [0,8,23,42,55,67,72,81,88,93,96,99][i % 12] + (i % 3);
+      const fp = Math.round((100 - p) / 100 * (40 + i * 3));
+      return { id, name: ['内容低质','设计不适二级','误导性内容','虚假宣传','低俗暗示','夸大宣传','标题党','诱导点击','素材违规','版权风险','落地页异常','表单误导'][i % 12],
+        precision: p > 99 ? 99 : p, fp, sample: 40 + i * 3, rank: i + 1,
+        fpReason: '', remark: '', elType: ['文本','图片','视频','落地页'][i % 4], industry: ['数字传媒','电商零售','金融科技','在线教育'][i % 4] };
+    });
+    const cls = p => p === null ? 'gray' : p < 50 ? 'red' : p < 85 ? 'orange' : 'green';
+    const label = p => p === null ? '无数据' : p < 50 ? '精度异常' : p < 85 ? '精度关注' : '精度正常';
+
+    let filterTab = 'all', sortDesc = true, chartKw = '', kw = '', chartSort = 'desc', selMode = false, selected = new Set();
+
+    // ===== KPI =====
+    function renderKpi() {
+      const tot = TAGS.reduce((s,t)=>s+t.sample,0), fp = TAGS.reduce((s,t)=>s+t.fp,0);
+      document.getElementById('kpiTotal').textContent = tot;
+      document.getElementById('kpiFp').textContent = fp;
+      document.getElementById('kpiPrec').textContent = (100 - fp/tot*100).toFixed(1) + '%';
+      document.getElementById('kpiTag').textContent = TAGS.length;
+      document.getElementById('cAll').textContent = TAGS.length;
+      document.getElementById('cRed').textContent = TAGS.filter(t=>cls(t.precision)==='red').length;
+      document.getElementById('cOrange').textContent = TAGS.filter(t=>cls(t.precision)==='orange').length;
+      document.getElementById('cGreen').textContent = TAGS.filter(t=>cls(t.precision)==='green').length;
+    }
+
+    // ===== 表格 =====
+    function renderTable() {
+      const wrap = document.getElementById('tableWrap');
+      let arr = TAGS.filter(t => {
+        if (filterTab !== 'all' && cls(t.precision) !== filterTab) return false;
+        if (kw && !(`${t.id}`.includes(kw) || t.name.includes(kw))) return false;
+        return true;
+      });
+      arr.sort((a,b)=> sortDesc ? b.precision - a.precision : a.precision - b.precision);
+      wrap.querySelectorAll('.row').forEach(e=>e.remove());
+      const empty = document.getElementById('emptyList');
+      if (!arr.length) { empty.classList.remove('hidden'); return; } else empty.classList.add('hidden');
+      arr.forEach((t, ti) => {
+        const row = document.createElement('div');
+        row.className = 'tbl-grid row items-center py-3 px-2 border-b border-[#f0f2f6] hover:bg-[#f7f9fc] cursor-pointer';
+        row.innerHTML = `
+          <span class="text-center text-ink-4 font-semibold">${ti+1}</span>
+          <span class="text-center font-semibold text-ink-2">${t.id}</span>
+          <span class="text-center font-semibold text-ink-1">${t.name}</span>
+          <span class="text-center"><span class="badge b-${cls(t.precision)}">${label(t.precision)}</span></span>
+          <span class="text-center flex items-center gap-2 px-2"><span class="bar flex-1 max-w-[200px]"><i style="width:${t.precision}%;background:${cls(t.precision)==='red'?'#e23a3a':cls(t.precision)==='orange'?'#e8851a':'#19a558'}"></i></span><b class="text-[14px]">${t.precision}%</b></span>
+          <span class="text-center font-semibold text-ink-2">${t.rank}</span>
+          <span class="text-center" @click.stop><input class="rin" data-fp="${t.id}" value="${t.fpReason}" placeholder="填写误杀归因…"></span>
+          <span class="text-center" @click.stop><input class="rin" data-rm="${t.id}" value="${t.remark}" placeholder="点击编辑备注…"></span>`;
+        row.addEventListener('click', (e)=>{ if (e.target.closest('input')) return; if (selMode) { toggleSel(t.id, row); } else openDrawer(t); });
+        // 行内保存态（改造点②）
+        row.querySelectorAll('input').forEach(inp=>{
+          inp.addEventListener('change', ()=>{
+            const k = inp.dataset.fp ? 'fpReason' : 'remark';
+            const tg = TAGS.find(x=>x.id===(inp.dataset.fp||inp.dataset.rm));
+            tg[k] = inp.value;
+            inp.style.borderColor = '#19a558';
+            setTimeout(()=>inp.style.borderColor='', 900);
+          });
+        });
+        wrap.appendChild(row);
+      });
+    }
+
+    // ===== 选择模式（改造点③：底部浮条） =====
+    function toggleSel(id, row) {
+      if (selected.has(id)) { selected.delete(id); row.style.background=''; }
+      else { selected.add(id); row.style.background='#eef2ff'; }
+      renderFloat();
+    }
+    function renderFloat() {
+      let f = document.getElementById('floatBar');
+      if (!selected.size) { if (f) f.remove(); return; }
+      if (!f) { f = document.createElement('div'); f.id='floatBar'; f.className='fixed bottom-6 left-1/2 -translate-x-1/2 z-30 card px-5 py-3 flex items-center gap-4'; document.body.appendChild(f); }
+      f.innerHTML = `<span class="text-[13px]">已选 <b class="text-brand">${selected.size}</b> 个标签</span>
+        <button id="clearSel" class="chip">清空</button>
+        <button id="doTicket" class="px-4 py-1.5 rounded-lg bg-brand text-white text-[13px] font-medium flex items-center gap-1.5"><i data-lucide="ticket" class="w-4 h-4"></i>发起提需</button>`;
+      lucide.createIcons();
+      f.querySelector('#clearSel').onclick = ()=>{ selected.clear(); document.querySelectorAll('.row').forEach(r=>r.style.background=''); renderFloat(); };
+      f.querySelector('#doTicket').onclick = ()=> alert('提需流程：已选 ' + selected.size + ' 个标签（原型演示）');
+    }
+
+    // ===== 抽屉 =====
+    let distChart;
+    function openDrawer(t) {
+      document.getElementById('dTag').textContent = `${t.name} (${t.id})`;
+      const st = document.getElementById('dStatus'); st.className = `badge b-${cls(t.precision)} mt-1`; st.textContent = label(t.precision);
+      document.getElementById('dPrec').textContent = t.precision + '%';
+      document.getElementById('dFp').textContent = t.fp;
+      document.getElementById('dSample').textContent = t.sample;
+      document.getElementById('dSamples').innerHTML = Array.from({length:5},(_,i)=>`<div class="flex items-center gap-2 py-1.5 border-b border-[#f0f2f6]"><span class="dot" style="background:#4f7cff"></span>FP-${t.id}-${i+1} · ${t.elType} · ${t.industry} <span class="badge b-gray ml-auto">误杀</span></div>`).join('');
+      document.getElementById('mask').classList.remove('hidden');
+      document.getElementById('drawer').classList.remove('translate-x-full');
+      setTimeout(()=>{ if(!distChart) distChart = echarts.init(document.getElementById('dDist')); distChart.setOption({
+        tooltip:{trigger:'axis'}, grid:{left:10,right:10,top:20,bottom:10,containLabel:true},
+        xAxis:{type:'category',data:['数字传媒','电商零售','金融科技','在线教育'],axisLabel:{fontSize:11}},
+        yAxis:{type:'value'}, series:[{type:'bar',data:[12,8,5,3],itemStyle:{color:'#4f7cff',borderRadius:[5,5,0,0]}}]
+      }); }, 320);
+    }
+    function closeDrawer() { document.getElementById('mask').classList.add('hidden'); document.getElementById('drawer').classList.add('translate-x-full'); }
+    document.getElementById('drawerClose').onclick = closeDrawer;
+    document.getElementById('drawerBack').onclick = closeDrawer;
+    document.getElementById('mask').onclick = closeDrawer;
+
+    // ===== 主图表 =====
+    const chart = echarts.init(document.getElementById('chart'));
+    function renderChart() {
+      let arr = TAGS.filter(t => cls(t.precision)!=='gray' && (!chartKw || `${t.id}`.includes(chartKw) || t.name.includes(chartKw)));
+      arr.sort((a,b)=> chartSort==='desc' ? b.precision-a.precision : a.precision-b.precision);
+      arr = arr.slice(0, 20);
+      chart.setOption({
+        grid:{left:40,right:40,top:30,bottom:10,containLabel:true},
+        tooltip:{trigger:'axis',axisPointer:{type:'shadow'},formatter:p=>{const t=arr[p[0].dataIndex];return `<b>${t.name}</b><br>标签ID：${t.id}<br>精度 <b>${t.precision}%</b>`;}},
+        xAxis:{type:'category',data:arr.map(t=>t.id),axisLabel:{fontSize:11,interval:0,rotate:arr.length>14?30:0}},
+        yAxis:{type:'value',max:100,axisLabel:{formatter:'{value}%'}},
+        series:[{type:'bar',barWidth:24,data:arr.map(t=>({value:t.precision,itemStyle:{color:cls(t.precision)==='red'?'#e23a3a':cls(t.precision)==='orange'?'#e8851a':'#19a558',borderRadius:[5,5,0,0]}}))}]
+      });
+    }
+    const pie = echarts.init(document.getElementById('pieEl'));
+    pie.setOption({tooltip:{trigger:'item'},legend:{bottom:0,fontSize:11},series:[{type:'pie',radius:['40%','68%'],data:[{value:8,name:'文本'},{value:7,name:'图片'},{value:6,name:'视频'},{value:3,name:'落地页'}],label:{fontSize:11},color:['#4f7cff','#19a558','#e8851a','#8b5cf6']}]});
+    const barInd = echarts.init(document.getElementById('barInd'));
+    barInd.setOption({tooltip:{trigger:'axis'},grid:{left:10,right:10,top:10,bottom:10,containLabel:true},xAxis:{type:'value'},yAxis:{type:'category',data:['在线教育','金融科技','电商零售','数字传媒'],axisLabel:{fontSize:11}},series:[{type:'bar',data:[3,5,8,12],itemStyle:{color:'#4f7cff',borderRadius:[0,5,5,0]}}]});
+
+    // ===== 事件 =====
+    document.getElementById('segTabs').onclick = e => { const b = e.target.closest('button'); if(!b)return; filterTab=b.dataset.v; document.querySelectorAll('#segTabs button').forEach(x=>x.classList.toggle('on',x===b)); renderTable(); };
+    document.getElementById('sortBtn').onclick = () => { sortDesc=!sortDesc; const b=document.getElementById('sortBtn'); b.innerHTML=`<i data-lucide="arrow-down-wide-narrow" class="w-4 h-4"></i>精度${sortDesc?'降序':'升序'}`; lucide.createIcons(); renderTable(); };
+    document.getElementById('chartSort').onchange = e => { chartSort=e.target.value; renderChart(); };
+    document.getElementById('chartKw').oninput = e => { chartKw=e.target.value; renderChart(); };
+    document.getElementById('kw').oninput = e => { kw=e.target.value; renderTable(); };
+    document.getElementById('selModeBtn').onclick = e => { selMode=!selMode; e.currentTarget.classList.toggle('on',selMode); document.getElementById('flowTip').classList.toggle('hidden',!selMode); if(!selMode){selected.clear();document.querySelectorAll('.row').forEach(r=>r.style.background='');renderFloat();} };
+    document.getElementById('kpiTagBtn').onclick = () => { filterTab='all'; document.querySelectorAll('#segTabs button').forEach(x=>x.classList.toggle('on',x.dataset.v==='all')); renderTable(); document.querySelector('.card.p-5:last-child').scrollIntoView({behavior:'smooth'}); };
+    document.getElementById('ticketBtn').onclick = () => { selMode=true; document.getElementById('selModeBtn').classList.add('on'); document.getElementById('flowTip').classList.remove('hidden'); };
+    document.getElementById('presets').onchange = () => { const b=document.getElementById('srcBadge'); b.className='badge b-green flex items-center gap-1.5'; b.innerHTML='<i data-lucide="zap" class="w-3.5 h-3.5"></i><span>实时聚合 · 时间子集</span>'; lucide.createIcons(); renderKpi(); renderTable(); renderChart(); };
+    document.getElementById('shareBtn').onclick = () => alert('已复制当前页面状态快照（原型演示）');
+
+    // ===== init =====
+    renderKpi(); renderTable(); renderChart();
+    setTimeout(()=>document.getElementById('srcBadge').innerHTML='<i data-lucide="zap" class="w-3.5 h-3.5"></i><span>实时聚合 · 时间子集</span>', 100);
+    lucide.createIcons();
+    window.addEventListener('resize', ()=>{ chart.resize(); pie.resize(); barInd.resize(); if(distChart)distChart.resize(); });
+  </script>
+</body>
+</html>

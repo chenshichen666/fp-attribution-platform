@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234f7cff' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 3v4M12 17v4M3 12h4M17 12h4'/%3E%3Ccircle cx='12' cy='12' r='2' fill='%234f7cff'/%3E%3C/svg%3E" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // 在一切模块脚本与第三方采集器之前注册：静默「媒体资源加载失败」冒泡到 window 的事件。
+      // 这类事件对象无 message/stack（属性不可枚举），被采集器 JSON.stringify 后显示为空对象 {}，
+      // 形成无法定位的噪声。实际失败已由组件级 @error / onMediaError 兜底（如「↗ 原素材」）。
+      // 资源加载错误不冒泡，必须在捕获阶段拦截；此处抢先于任何后续监听执行。
+      (function () {
+        var MEDIA_TAGS = { IMG: 1, VIDEO: 1, AUDIO: 1, SOURCE: 1, TRACK: 1 };
+        function isMediaTarget(t) {
+          return t && t.tagName && MEDIA_TAGS[t.tagName];
+        }
+        window.addEventListener('error', function (e) {
+          var t = e && e.target;
+          if (isMediaTarget(t) && !e.message) {
+            e.stopImmediatePropagation();
+            return false;
+          }
+        }, true);
+
+        // 静默「空对象 / 无信息」的未处理 Promise 拒绝噪声（如 catch(()=>{}) 外溢的空 reason）。
+        // 有真实信息的 rejection 仍照常抛出，便于排查。
+        window.addEventListener('unhandledrejection', function (e) {
+          var r = e && e.reason;
+          var empty = r == null ||
+            (typeof r === 'object' && !(r instanceof Error) && Object.keys(r).length === 0);
+          if (empty) { e.preventDefault(); return false; }
+        });
+      })();
+    </script>
+<title>误杀样本归因</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
