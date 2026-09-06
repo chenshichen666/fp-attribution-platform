@@ -4,6 +4,7 @@ import { requireLogin, requireRole, audit } from '../middleware/auth.js'
 import { getServiceUrl } from '../trag/manager.js'
 import { isLocalMode } from '../trag/upstream.js'
 import { normDate, safeMaxDateGlobal } from '../utils/timeNorm.js'
+import { resolveSampleTag } from '../utils/resolveSampleTag.js'
 
 // 使用 Node 20 内置原生 fetch（全局），不再依赖 node-fetch
 const fetch = globalThis.fetch
@@ -822,6 +823,9 @@ router.get('/precision-tags', requireLogin, async (req, res, next) => {
 // 获取策略标签下的样本明细
 router.get('/precision-tags/:id/samples', requireLogin, async (req, res, next) => {
   try {
+    // ★ 标签 ID 解析（871+ → 1001+），避免按标签查空
+    const _st = await resolveSampleTag(req.params.id)
+    const _id = _st ? _st.sampleTagId : req.params.id
     const rows = await query(`SELECT sample_id AS id, element_type AS type, is_video AS isVideo, policy_ids AS machineTag, ai_evaluate_policy_ids AS humanTag,
        first_level_industry_name AS industryL1, second_level_industry_name AS industryL2, media_url AS mediaUrl, ocr_content AS ocrContent,
        asr_content AS asrContent, uid, arrive_time AS arriveTime, ds, is_fp AS isFp, fp_reason AS fpReason, remark,
@@ -830,9 +834,9 @@ router.get('/precision-tags/:id/samples', requireLogin, async (req, res, next) =
        COALESCE(NULLIF(element_fingerprint, ''), '') AS elementFingerprint,
        COALESCE(NULLIF(reviewer_name, ''), NULLIF(ai_evaluate_reviewer_name, ''), '') AS reviewerName
        FROM real_data_tag_precision_samples WHERE tag_id=? ORDER BY id`,
-      [req.params.id]
+      [_id]
     )
-    const _tagIdStr = `${req.params.id}`
+    const _tagIdStr = `${_id}`
     for (const r of rows) {
       if (r.machineTag) r.machineTag = String(r.machineTag).replace(/[\[\]]/g, '')
       if (r.humanTag) r.humanTag = String(r.humanTag).replace(/[\[\]]/g, '')

@@ -2,8 +2,16 @@ import { Router } from 'express'
 import { rawQuery } from '../db/pool.js'
 import { requireLogin } from '../middleware/auth.js'
 import { rewriteDataTables } from '../middleware/dataMode.js'
+import { resolveSampleTag } from '../utils/resolveSampleTag.js'
 
 const router = Router()
+
+// ★ 统一解析标签 ID（871+ → 1001+）：UI 传 real_data_tags.id（871+），
+//   样本/精度表用的是 tag_id（1001+），不解析会导致按标签查空（聚类簇/明细恒为 0）
+async function sampleTagIdOf(rawId) {
+  const st = await resolveSampleTag(rawId)
+  return st ? st.sampleTagId : rawId
+}
 
 // 样本表时间窗口 WHERE（放行 arrive_time 为空/无效的样本）
 // ===== 聚类簇 ID 匹配条件 =====
@@ -836,7 +844,8 @@ router.get('/cluster-quad', requireLogin, async (req, res, next) => {
     const { elementType } = req.query
     const start = String(req.query.start || '').trim()
     const end = String(req.query.end || '').trim()
-    const _tid = String(req.query.tagId || '').replace(/[^0-9]/g, '')
+    // ★ 标签 ID 解析（871+ → 1001+），避免按标签查空
+    const _tid = String(await sampleTagIdOf(req.query.tagId || '')).replace(/[^0-9]/g, '')
 
     // 可用标签列表（从同源 real_data_samples 提取所有 policy_ids / ai_evaluate_policy_ids 的去重值，带相同时间窗口）
     const tagCond = [clusterIdCond('class_id')]
@@ -975,7 +984,8 @@ router.get('/cluster-elements', requireLogin, async (req, res, next) => {
     const { classId, elementType, page = 1, pageSize = 50 } = req.query
     const start = String(req.query.start || '').trim()
     const end = String(req.query.end || '').trim()
-    const _tid = String(req.query.tagId || '').replace(/[^0-9]/g, '')
+    // ★ 标签 ID 解析（871+ → 1001+），避免按标签查空
+    const _tid = String(await sampleTagIdOf(req.query.tagId || '')).replace(/[^0-9]/g, '')
     if (!classId) return res.status(400).json({ error: 'classId is required' })
 
     const conditions = ['s.class_id = ?']
@@ -1047,7 +1057,8 @@ router.get('/tag-cluster-cards', requireLogin, async (req, res, next) => {
   try {
     const tagId = String(req.query.tagId || '').trim()
     if (!tagId) return res.status(400).json({ error: 'tagId is required' })
-    const _tid = tagId.replace(/[^0-9]/g, '')
+    // ★ 标签 ID 解析（871+ → 1001+），避免按标签查空
+    const _tid = String(await sampleTagIdOf(tagId)).replace(/[^0-9]/g, '')
 
     // 过滤：按标签成员命中（逗号边界避免 14795 误命中 147950）；
     // 仅统计真实聚类簇（CLxxxx 风格 ID）——统一 UPPER 后匹配，避免 'c%' 因大小写命中 0 行

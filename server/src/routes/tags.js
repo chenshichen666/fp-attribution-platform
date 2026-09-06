@@ -2,9 +2,16 @@ import { Router } from 'express'
 import { query } from '../db/pool.js'
 import { requireLogin } from '../middleware/auth.js'
 import { rewriteDataTables } from '../middleware/dataMode.js'
+import { resolveSampleTag } from '../utils/resolveSampleTag.js'
 import ExcelJS from 'exceljs'
 
 const router = Router()
+
+// ★ 统一解析标签 ID：入口可能传 real_data_tags.id（871+），样本/精度表用的是 tag_id（1001+）
+async function sampleTagIdOf(rawId) {
+  const st = await resolveSampleTag(rawId)
+  return st ? st.sampleTagId : rawId
+}
 
 // ★性能优化 T6.3: overview 进程内缓存
 // key = 数据版本号（取 data_meta 中 data_updated_at 的最大值），TTL=5分钟
@@ -377,6 +384,9 @@ router.get('/element-precision', requireLogin, async (req, res, next) => {
 //   若精度样本表也为空，则回退到 real_data_samples（is_fp=1）
 router.get('/:id/samples', requireLogin, async (req, res, next) => {
   try {
+    // ★ 标签 ID 解析（871+ → 1001+）：UI 传 real_data_tags.id（871+），
+    //   样本/精度/素材分类表用的是 tag_id（1001+），不解析会导致按标签查空 → 素材明细 0 条
+    const resId = await sampleTagIdOf(req.params.id)
     // ===== 平台数据逻辑 =====
       // 解析时间窗口参数
       const start = (req.query.start || '').trim()
@@ -394,9 +404,9 @@ router.get('/:id/samples', requireLogin, async (req, res, next) => {
       // 标签匹配条件：tag_id 精确 OR policy_ids/ai_evaluate_policy_ids 复合成员命中（逗号边界避免 14795 误命中 147950）
       // 与「标签明细/工单关联素材」口径对齐：复合标签行（如 policy_ids='14748,14795'）的 tag_id 常存主标签，
       // 仅用 s.tag_id=? 精确匹配会漏掉这些行，导致「明细有数据、素材分类却 0 条」。
-      const _tid = String(req.params.id).replace(/[^0-9]/g, '')
+      const _tid = String(resId).replace(/[^0-9]/g, '')
       const tagMatchCond = `(s.tag_id = ? OR (',' || REPLACE(REPLACE(IFNULL(s.policy_ids,''),'[',''),']','') || ',') LIKE ? OR (',' || REPLACE(REPLACE(IFNULL(s.ai_evaluate_policy_ids,''),'[',''),']','') || ',') LIKE ?)`
-      const tagMatchParams = [req.params.id, `%,${_tid},%`, `%,${_tid},%`]
+      const tagMatchParams = [resId, `%,${_tid},%`, `%,${_tid},%`]
 
       // 审核判定筛选：默认仅返回误杀(FP)样本（兼容「素材分类」预览）；
       // status=all 时返回该标签下全部命中样本（含一致/漏放），并附 verifyStatus 供前端筛选
@@ -480,7 +490,7 @@ COALESCE(NULLIF(s.ops_advertiser_name, ''), d.ops_advertiser_name, '') AS advert
                 `SELECT sample_id, category_id, feature_desc, supplement
                  FROM material_category_relation
                  WHERE tag_id=? AND sample_id IN (${placeholders}) AND category_id > 0`,
-                [req.params.id, ...idList]
+                [resId, ...idList]
               )
               if (mediaRels.length) {
                 const mediaMap = {}
@@ -508,7 +518,7 @@ COALESCE(NULLIF(s.ops_advertiser_name, ''), d.ops_advertiser_name, '') AS advert
       }
 
       // 兜底：machineTag 为空或仅为 [] 时，填充为当前标签 ID（SQL 已按 tag_id 过滤，归属确定）
-      const _tagIdStr = `${req.params.id}`
+      const _tagIdStr = `${resId}`
       for (const r of rows) {
         if (!r.machineTag || r.machineTag === '[]' || String(r.machineTag).trim() === '') {
           r.machineTag = _tagIdStr
@@ -521,7 +531,7 @@ COALESCE(NULLIF(s.ops_advertiser_name, ''), d.ops_advertiser_name, '') AS advert
         const precisionRows = await query(
       rewriteDataTables(req, `SELECT first_level_industry_name, second_level_industry_name
            FROM real_data_tag_precision WHERE tag_id=? AND (first_level_industry_name!='' OR second_level_industry_name!='') LIMIT 1`),
-          [req.params.id]
+          [resId]
         )
         if (precisionRows.length) {
           const p = precisionRows[0]
@@ -595,7 +605,7 @@ COALESCE(NULLIF(s.ops_advertiser_name, ''), d.ops_advertiser_name, '') AS advert
         const raw = String(v || '').replace(/[\[\]\s]/g, '')
         return raw ? raw.split(/[,，]/).map(t => t.trim()).filter(Boolean) : []
       }
-      const _tid2 = String(req.params.id).replace(/[^0-9]/g, '')
+      const _tid2 = String(resId).replace(/[^0-9]/g, '')
       for (const r of rows) {
         const mt = _normTagIds(r.machineTag)
         const ht = _normTagIds(r.humanTag)
@@ -644,6 +654,8 @@ function buildTrendFilters(req) {
 router.get('/:id/trend', requireLogin, async (req, res, next) => {
   try {
     const groupBy = (req.query.groupBy || 'date').trim() === 'ds' ? 'ds' : 'date'
+    // ★ 标签 ID 解析（871+ → 1001+），避免按标签查空
+    const tid = await sampleTagIdOf(req.params.id)
 
     // 时间范围：优先 start/end，其次 days（默认 7 天，含当天）
     const days = parseInt(req.query.days, 10)
@@ -673,7 +685,7 @@ router.get('/:id/trend', requireLogin, async (req, res, next) => {
          FROM real_data_tag_precision
          WHERE tag_id=? AND ds IS NOT NULL AND ds != '' ${f.cond}
          GROUP BY ds ORDER BY ds ASC`),
-        [req.params.id, ...f.params]
+        [tid, ...f.params]
       )
       return res.json(rows.map(r => ({
         date: r.date,
@@ -698,7 +710,7 @@ router.get('/:id/trend', requireLogin, async (req, res, next) => {
        WHERE tag_id=? AND arrive_time IS NOT NULL AND LENGTH(TRIM(arrive_time)) >= 8 ${f.cond} ${timeCond.length ? 'AND ' + timeCond.join(' AND ') : ''}
        GROUP BY DATE(REPLACE(NULLIF(arrive_time, ''), '/', '-'))
        ORDER BY date ASC`),
-      [req.params.id, ...f.params, ...timeParams]
+      [tid, ...f.params, ...timeParams]
     )
 
     return res.json(sampleRows.map(r => {
@@ -718,13 +730,15 @@ router.get('/:id', requireLogin, async (req, res, next) => {
     // 方案 A：时间窗口命中（子集）→ 从样本明细实时聚合
     if (await useSampleAggregation(req)) {
       const { where, params } = sampleTimeWhere(req)
+      // ★ 标签 ID 解析（871+ → 1001+），避免按标签查空
+      const tid = await sampleTagIdOf(req.params.id)
       const rows = await query(
         rewriteDataTables(req, `SELECT tag_id AS id, MAX(tag_name) AS name,
         COUNT(*) AS total, SUM(is_fp) AS fp,
         COALESCE(ROUND((COUNT(*) - SUM(is_fp)) * 100.0 / COUNT(*), 1), 0) AS "precision",
         (COUNT(*) - SUM(is_fp)) AS tp, COUNT(*) AS sampleCount
        FROM real_data_samples WHERE tag_id=? ${where.replace(/^WHERE /, 'AND ')} GROUP BY tag_id`),
-        [req.params.id, ...params]
+        [tid, ...params]
       )
       if (!rows.length) return res.json({ id: req.params.id, name: '', precision: 0, total: 0, fp: 0, sampleTotal: 0 })
       const r = rows[0]
@@ -736,13 +750,14 @@ router.get('/:id', requireLogin, async (req, res, next) => {
       // 样本明细表的 tag_name 可能为空 → 回退精度聚合表取标签名（仅取名字，不影响窗口聚合数值）
       if (!r.name) {
         try {
-          const nm = await query(rewriteDataTables(req, `SELECT MAX(tag_name) AS name FROM real_data_tag_precision WHERE tag_id=?`), [req.params.id])
+          const nm = await query(rewriteDataTables(req, `SELECT MAX(tag_name) AS name FROM real_data_tag_precision WHERE tag_id=?`), [tid])
           if (nm.length && nm[0].name) r.name = nm[0].name
         } catch { /* 取名字失败不影响数值返回 */ }
       }
       return res.json(r)
     }
     // 默认（无窗口 / 覆盖全量）：沿用精度聚合表
+    const tid2 = await sampleTagIdOf(req.params.id)
     const rows = await query(
       rewriteDataTables(req, `SELECT tag_id AS id, MAX(tag_name) AS name,
         SUM(total) AS total, SUM(fp) AS fp,
@@ -753,7 +768,7 @@ router.get('/:id', requireLogin, async (req, res, next) => {
         MAX(first_level_industry_name) AS industryL1, MAX(second_level_industry_name) AS industryL2,
         MAX(element_type) AS elementType, MAX(element_type_name) AS elementTypeName
        FROM real_data_tag_precision WHERE tag_id=? GROUP BY tag_id`),
-      [req.params.id]
+      [tid2]
     )
     if (!rows.length) return res.json({ id: req.params.id, name: '', precision: 0, total: 0, fp: 0, sampleTotal: 0 })
     const r = rows[0]
@@ -769,6 +784,8 @@ router.get('/:id', requireLogin, async (req, res, next) => {
 // 查询 real_data_tag_precision_samples（或回退到 real_data_samples），LEFT JOIN ai_evaluate_detail 补全4个字段
 router.post('/:id/export/excel', requireLogin, async (req, res, next) => {
   try {
+    // ★ 标签 ID 解析（871+ → 1001+），避免按标签查空
+    const resId = await sampleTagIdOf(req.params.id)
     const { sampleIds, start, end } = req.body || {}
     if (!Array.isArray(sampleIds) || !sampleIds.length) {
       return res.status(400).json({ error: '请选择至少一条素材进行导出' })
@@ -815,7 +832,7 @@ COALESCE(d.ops_advertiser_name, '') AS opsAdvertiserName,
          AND s.sample_id IN (${idPlaceholders})
          ${timeCond}
        ORDER BY s.id`),
-      [req.params.id, ...idParams, ...timeParams]
+      [resId, ...idParams, ...timeParams]
     )
 
     // 精度样本表为空 → 回退到 real_data_samples
@@ -848,7 +865,7 @@ COALESCE(NULLIF(s.ops_advertiser_name, ''), d.ops_advertiser_name, '') AS opsAdv
            AND s.sample_id IN (${idPlaceholders})
            ${timeCond}
          ORDER BY s.id`),
-        [req.params.id, ...idParams, ...timeParams]
+        [resId, ...idParams, ...timeParams]
       )
     }
 
@@ -864,7 +881,7 @@ COALESCE(NULLIF(s.ops_advertiser_name, ''), d.ops_advertiser_name, '') AS opsAdv
               `SELECT sample_id, category_id, supplement
                FROM material_category_relation
                WHERE tag_id=? AND sample_id IN (${idPh}) AND category_id > 0`,
-              [req.params.id, ...idList]
+              [resId, ...idList]
             )
             if (mediaRels.length) {
               const mediaMap = {}

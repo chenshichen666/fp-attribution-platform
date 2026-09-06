@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { rawQuery, query } from '../db/pool.js'
 import { requireLogin } from '../middleware/auth.js'
 import { rewriteDataTables } from '../middleware/dataMode.js'
+import { resolveSampleTag } from '../utils/resolveSampleTag.js'
 
 const router = Router()
 
@@ -190,6 +191,10 @@ router.get('/data-insight', requireLogin, async (req, res, next) => {
   try {
     const tagId = req.query.tagId
     if (!tagId) return res.status(400).json({ error: 'tagId is required' })
+    // ★ 标签 ID 解析：入口可能传 real_data_tags.id（871+），样本表用的是 tag_id（1001+），
+    //   不解析会导致按标签查空 → 周趋势走 mock、行业下钻为空
+    const resolved = await resolveSampleTag(tagId)
+    const sampleTagId = resolved ? resolved.sampleTagId : String(tagId)
     // 行业置值下钻时间窗口：days = 近N天（7/14/30）；start/end = 自定义区间
     const days = Number(req.query.days) || 0
     const start = (req.query.start || '').trim()
@@ -198,7 +203,7 @@ router.get('/data-insight', requireLogin, async (req, res, next) => {
     // arrive_time 兼容 '2026-07-15T00:00:00' / '2026-07-15' / '2026/07/15'
     const dayExpr = `DATE(REPLACE(NULLIF(arrive_time, ''), '/', '-'))`
     const where = `tag_id = ? AND arrive_time IS NOT NULL AND LENGTH(TRIM(arrive_time)) >= 8`
-    const args = [tagId]
+    const args = [sampleTagId]
 
     const fmt = (d) => {
       if (!d) return ''
@@ -276,7 +281,7 @@ router.get('/data-insight', requireLogin, async (req, res, next) => {
 
     // 行业下钻时间窗口过滤：近N天（相对 maxD）或自定义区间
     let indWhere = where
-    const indArgs = [tagId]
+    const indArgs = [sampleTagId]
     if (days > 0 && maxD) {
       indWhere += ` AND ${dayExpr} >= ?`
       indArgs.push(shift(maxD, -(days - 1)))
@@ -306,6 +311,31 @@ router.get('/data-insight', requireLogin, async (req, res, next) => {
         total,
       }
     })
+
+    // 无真实数据时与周趋势一致走 mock（行业 × 元素类型，精度水平与趋势曲线匹配）
+    if (weekRows.length === 0) {
+      const mockIndustries = [
+        { industry: '社交', elementType: 'IMAGE', precision: 62.4, fpCount: 86, total: 229 },
+        { industry: '社交', elementType: 'TEXT', precision: 58.1, fpCount: 92, total: 220 },
+        { industry: '社交', elementType: 'VIDEO', precision: 66.7, fpCount: 64, total: 192 },
+        { industry: '电商', elementType: 'IMAGE', precision: 71.3, fpCount: 58, total: 202 },
+        { industry: '电商', elementType: 'VIDEO', precision: 76.8, fpCount: 42, total: 181 },
+        { industry: '电商', elementType: 'TEXT', precision: 69.5, fpCount: 61, total: 200 },
+        { industry: '游戏', elementType: 'IMAGE', precision: 80.2, fpCount: 35, total: 177 },
+        { industry: '游戏', elementType: 'VIDEO', precision: 83.9, fpCount: 27, total: 168 },
+        { industry: '游戏', elementType: 'TEXT', precision: 78.4, fpCount: 39, total: 181 },
+        { industry: '教育', elementType: 'IMAGE', precision: 85.6, fpCount: 22, total: 153 },
+        { industry: '教育', elementType: 'VIDEO', precision: 88.1, fpCount: 17, total: 143 },
+        { industry: '金融', elementType: 'IMAGE', precision: 87.3, fpCount: 19, total: 150 },
+        { industry: '金融', elementType: 'TEXT', precision: 84.7, fpCount: 24, total: 157 },
+        { industry: '医疗健康', elementType: 'IMAGE', precision: 89.5, fpCount: 12, total: 114 },
+        { industry: '医疗健康', elementType: 'VIDEO', precision: 86.2, fpCount: 16, total: 116 },
+        { industry: '房产', elementType: 'IMAGE', precision: 90.4, fpCount: 9, total: 94 },
+        { industry: '汽车', elementType: 'IMAGE', precision: 88.8, fpCount: 10, total: 89 },
+      ]
+      industryRows.length = 0
+      industryRows.push(...mockIndustries)
+    }
 
     return res.json({
       trend,
