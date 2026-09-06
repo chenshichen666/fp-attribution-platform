@@ -5,6 +5,8 @@
 
 一句话概括业务价值：**让「机审拦错了」这件事，从一团模糊的投诉，变成可定位、可量化、可追责、可沉淀的数据链路。**
 
+🔗 **相关链接**：[在线体验 Demo](http://115.159.224.196:8787) · [项目仓库](https://github.com/chenshichen666/fp-attribution-platform)
+
 ---
 
 ## ✨ 核心能力
@@ -41,7 +43,7 @@
 
 ```bash
 # 1. 克隆
-git clone <你的仓库地址>
+git clone https://github.com/chenshichen666/fp-attribution-platform.git
 cd mishapingtai
 
 # 2. 安装依赖
